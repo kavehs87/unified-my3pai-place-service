@@ -1,4 +1,5 @@
 import time
+import uuid
 
 import redis.asyncio as redis
 from fastapi import HTTPException, Request, Response
@@ -20,11 +21,12 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             client: redis.Redis = await get_cache()
             now = time.time()
             window_start = now - settings.rate_limit_window_seconds
-            key = "ratelimit:global"
+            client_ip = request.client.host if request.client else "unknown"
+            key = f"ratelimit:{client_ip}"
 
             pipeline = client.pipeline()
             pipeline.zremrangebyscore(key, 0, window_start)
-            member = f"{now}:{request.headers.get('x-request-id', id(request))}"
+            member = f"{now}:{uuid.uuid4()}"
             pipeline.zadd(key, {member: now})
             pipeline.zcard(key)
             pipeline.expire(key, settings.rate_limit_window_seconds + 1)

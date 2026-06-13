@@ -235,6 +235,8 @@ The JSON body says `"status": "degraded"`, but the HTTP status is always `200`. 
 ---
 
 ### 15. Rate limiter still uses a global key
+**Status: ✅ FIXED** → Per-IP key (`ratelimit:{client_ip}`), UUID-based member to prevent collisions
+
 **File:** `src/dmo/middleware/rate_limit.py:23, 27`
 
 A single `ratelimit:global` key means one aggressive client can starve everyone. The sorted-set member `f"{now}:{x-request-id}"` can also collide if the same request ID is reused within the same microsecond.
@@ -353,8 +355,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 4 | 11 |
+| Medium (P2) | 11 | 0 | 5 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **14** | **29** |
+| **Total** | **28** | **1** | **15** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
