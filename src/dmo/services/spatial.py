@@ -1,5 +1,5 @@
 
-from sqlmodel import col, select, text
+from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Entity
@@ -40,21 +40,12 @@ async def nearby(
 
     where_clause = " AND ".join(where_parts)
 
-    count_sql = text(f"""
-        SELECT COUNT(*) FROM entities
-        WHERE {where_clause}
-          AND ST_DWithin(location, ST_MakePoint(:lon, :lat, 4326)::geography, :radius_m)
-    """)
-    count_params: dict[str, object] = {"lon": lon, "lat": lat, "radius_m": radius_m}
-    count_params.update(params)
-    count_sql = count_sql.bindparams(**count_params)
-    count_result = await session.exec(count_sql)
-    total = count_result.one()[0]
-
     fetch_size = page_size + 1
 
-    ids_sql = text(f"""
-        SELECT id, (ST_Distance(location, ST_MakePoint(:lon, :lat, 4326)::geography) / 1000.0) AS distance_km
+    rows_sql = text(f"""
+        SELECT entities.*,
+               (ST_Distance(location, ST_MakePoint(:lon, :lat, 4326)::geography) / 1000.0) AS distance_km,
+               COUNT(*) OVER() AS total
         FROM entities
         WHERE {where_clause}
           AND ST_DWithin(location, ST_MakePoint(:lon, :lat, 4326)::geography, :radius_m)
@@ -62,34 +53,30 @@ async def nearby(
         ORDER BY distance_km ASC, id ASC
         LIMIT :limit
     """)
-    ids_params: dict[str, object] = {
+    rows_params: dict[str, object] = {
         "lon": lon, "lat": lat, "radius_m": radius_m,
         "limit": fetch_size,
     }
-    ids_params.update(params)
-    ids_sql = ids_sql.bindparams(**ids_params)
-    ids_result = await session.exec(ids_sql)
-    id_distance_pairs = list(ids_result.all())
+    rows_params.update(params)
+    rows_sql = rows_sql.bindparams(**rows_params)
+    rows_result = await session.exec(rows_sql)
+    rows = list(rows_result.mappings().all())
 
-    if not id_distance_pairs:
+    if not rows:
         return [], 0, None, False
 
-    has_more = len(id_distance_pairs) > page_size
-    id_distance_pairs = id_distance_pairs[:page_size]
+    total = rows[0]["total"]
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
 
-    entity_ids = [row[0] for row in id_distance_pairs]
-    entities_stmt = select(Entity).where(col(Entity.id).in_(entity_ids))
-    entities_result = await session.exec(entities_stmt)
-    entities = entities_result.all()
-
-    entity_map = {e.id: e for e in entities}
     items = []
-    for eid, distance in id_distance_pairs:
-        entity = entity_map.get(eid)
-        if entity:
-            item = EntityListItem.model_validate(entity)
-            item.distance_km = round(distance, 2) if distance else None
-            items.append(item)
+    for row in rows:
+        mapping = {k: v for k, v in row.items() if k not in ("distance_km", "total", "location")}
+        entity = Entity.model_validate(mapping)
+        distance = row["distance_km"]
+        item = EntityListItem.model_validate(entity)
+        item.distance_km = round(distance, 2) if distance else None
+        items.append(item)
 
     next_cursor: str | None = None
     if has_more and items:
@@ -131,52 +118,40 @@ async def map_query(
 
     where_clause = " AND ".join(where_parts)
 
-    count_sql = text(f"""
-        SELECT COUNT(*) FROM entities
-        WHERE {where_clause}
-          AND ST_Intersects(location, ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)::geography)
-    """)
-    count_params: dict[str, object] = {
-        "min_lon": min_lon, "min_lat": min_lat,
-        "max_lon": max_lon, "max_lat": max_lat,
-    }
-    count_params.update(params)
-    count_sql = count_sql.bindparams(**count_params)
-    count_result = await session.exec(count_sql)
-    total = count_result.one()[0]
-
     fetch_size = page_size + 1
 
-    ids_sql = text(f"""
-        SELECT id FROM entities
+    rows_sql = text(f"""
+        SELECT entities.*,
+               COUNT(*) OVER() AS total
+        FROM entities
         WHERE {where_clause}
           AND ST_Intersects(location, ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)::geography)
         {cursor_filter}
         ORDER BY id ASC
         LIMIT :limit
     """)
-    ids_params: dict[str, object] = {
+    rows_params: dict[str, object] = {
         "min_lon": min_lon, "min_lat": min_lat,
         "max_lon": max_lon, "max_lat": max_lat,
         "limit": fetch_size,
     }
-    ids_params.update(params)
-    ids_sql = ids_sql.bindparams(**ids_params)
-    ids_result = await session.exec(ids_sql)
-    id_rows = list(ids_result.all())
+    rows_params.update(params)
+    rows_sql = rows_sql.bindparams(**rows_params)
+    rows_result = await session.exec(rows_sql)
+    rows = list(rows_result.mappings().all())
 
-    if not id_rows:
+    if not rows:
         return [], 0, None, False
 
-    has_more = len(id_rows) > page_size
-    id_rows = id_rows[:page_size]
+    total = rows[0]["total"]
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
 
-    entity_ids = [row[0] for row in id_rows]
-    entities_stmt = select(Entity).where(col(Entity.id).in_(entity_ids))
-    entities_result = await session.exec(entities_stmt)
-    entities = entities_result.all()
-
-    items = [EntityListItem.model_validate(e) for e in entities]
+    items = []
+    for row in rows:
+        mapping = {k: v for k, v in row.items() if k not in ("total", "location")}
+        entity = Entity.model_validate(mapping)
+        items.append(EntityListItem.model_validate(entity))
 
     next_cursor: str | None = None
     if has_more and items:
