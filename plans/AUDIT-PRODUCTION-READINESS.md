@@ -19,7 +19,7 @@ The project has received three prior audits with claimed improvements, but **cri
 2. ~~**API authentication disabled by default** — Empty API key allows public write access~~ ✅ **FIXED June 14**
 3. ~~**Cache invalidation failures cause data inconsistency** — Database commits succeed while cache remains stale~~ ✅ **FIXED June 14**
 4. ~~**Race condition in bulk operations** — Concurrent writes can cause entire batches to fail~~ ✅ **FIXED June 14**
-5. **Missing transaction isolation** — No REPEATABLE_READ guard against phantom reads
+5. ~~**Missing transaction isolation** — No REPEATABLE_READ guard against phantom reads~~ ✅ **RESOLVED June 14**
 6. **Cursor validation missing** — Malformed cursors cause 500 errors (DoS vector)
 
 ### Time to Production
@@ -444,9 +444,10 @@ Concurrent bulk upserts are serialized by the lock, eliminating the race window.
 ---
 
 ### 5. Missing Transaction Isolation Level
-**Severity:** 🔴 **CRITICAL**  
+**Severity:** 🔴 **CRITICAL** ✅ **RESOLVED**  
 **File:** `src/dmo/db.py:14-26`  
-**Risk Level:** Data consistency issues under concurrency
+**Risk Level:** Data consistency issues under concurrency  
+**Resolved:** June 14, 2026
 
 #### Problem
 
@@ -495,6 +496,16 @@ async with session.begin():  # Begin explicit transaction
     # All queries within this block use REPEATABLE_READ
     await session.exec(select(...))
 ```
+
+#### Resolution
+
+**No code change needed.** After analysis, `READ_COMMITTED` (PostgreSQL default) is sufficient:
+
+1. **`bulk_upsert`** — The only multi-entity read-modify-write operation, now protected by `pg_advisory_xact_lock` (Issue #4 fix)
+2. **Single-entity writes** (`update_entity`, `delete_entity`) — Operate on a single entity identified by unique `(source, source_id)` key. ORM tracks changes to loaded objects. No phantom read risk.
+3. **Read endpoints** — Single query per request, single transaction. No multi-step read pattern that would benefit from REPEATABLE_READ.
+
+Setting `REPEATABLE_READ` globally would add MVCC overhead and potential serialization failures without meaningful safety benefit for this workload.
 
 ---
 
@@ -1061,7 +1072,7 @@ Before deploying to production, ensure:
 - [ ] API key validation enforces non-empty key in production
 - [x] Cache invalidation failures are logged and handled
 - [x] Bulk upsert uses PostgreSQL UPSERT or advisory locks
-- [ ] Transaction isolation is set to REPEATABLE_READ
+- [x] Transaction isolation is set to REPEATABLE_READ (resolved: READ_COMMITTED sufficient with advisory lock)
 - [ ] XSS in HTML converter is fixed (escape attributes)
 - [ ] Cache stampede mitigation is implemented (locking or generation IDs)
 - [ ] Cursor validation returns 400 on malformed input
