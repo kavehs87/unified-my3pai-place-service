@@ -47,6 +47,9 @@ from dmo.services.write import (
     delete_entity as delete_entity_service,
 )
 from dmo.services.write import (
+    delete_classification as delete_classification_service,
+)
+from dmo.services.write import (
     delete_media as delete_media_service,
 )
 from dmo.services.write import (
@@ -251,6 +254,18 @@ async def delete_media_endpoint(
     deleted = await delete_media_service(session, media_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Media not found")
+    return {"deleted": True}
+
+
+@router.delete("/classifications/{classification_id}")
+async def delete_classification_endpoint(
+    session: SessionDep,
+    classification_id: int,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
+):
+    deleted = await delete_classification_service(session, classification_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Classification not found")
     return {"deleted": True}
 
 

@@ -133,6 +133,7 @@ class Media(SQLModel, table=True):
     attributions: list = Field(default_factory=list, sa_column=Column(JSONB, server_default=text("'[]'")))
     poster_url: str | None = Field(default=None, sa_column=Column(String(2048)))
     is_muted: bool | None = Field(default=None, sa_column=Column(Boolean))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, server_default=text("TRUE")))
 
     __table_args__ = (
         UniqueConstraint("entity_id", "url", name="uq_media_entity_url"),
@@ -147,6 +148,7 @@ class Classification(SQLModel, table=True):
     category: str = Field(sa_column=Column(String(100), nullable=False))
     value_code: str = Field(sa_column=Column(String(100), nullable=False))
     value_title: str | None = Field(default=None, sa_column=Column(String(255)))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, server_default=text("TRUE")))
 
     __table_args__ = (
         UniqueConstraint("entity_id", "category", "value_code", name="uq_classif_entity_value"),

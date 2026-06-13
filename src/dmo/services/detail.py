@@ -113,6 +113,7 @@ async def _fetch_media_by_source(
         .where(
             col(Entity.source) == source,
             col(Entity.source_id) == source_id,
+            col(Media.is_active),
         )
         .order_by(col(Media.sort_order))
     )
@@ -131,6 +132,7 @@ async def _fetch_classifications_by_source(
         .where(
             col(Entity.source) == source,
             col(Entity.source_id) == source_id,
+            col(Classification.is_active),
         )
     )
     result = await session.exec(stmt)

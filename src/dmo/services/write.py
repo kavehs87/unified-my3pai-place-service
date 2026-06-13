@@ -392,13 +392,13 @@ async def delete_media(
     session: AsyncSession,
     media_id: int,
 ) -> bool:
-    stmt = select(Media).where(Media.id == media_id)
+    stmt = select(Media).where(Media.id == media_id, col(Media.is_active))
     media = (await session.exec(stmt)).first()
     if not media:
         return False
 
     entity_id = media.entity_id
-    await session.delete(media)
+    media.is_active = False
     await session.commit()
 
     await invalidate_entity_caches(entity_id)
@@ -426,3 +426,20 @@ async def create_classification(
 
     await invalidate_entity_caches(data.entity_id)
     return ClassificationCreateResponse(id=classif.id, entity_id=str(data.entity_id))
+
+
+async def delete_classification(
+    session: AsyncSession,
+    classification_id: int,
+) -> bool:
+    stmt = select(Classification).where(Classification.id == classification_id, col(Classification.is_active))
+    classif = (await session.exec(stmt)).first()
+    if not classif:
+        return False
+
+    entity_id = classif.entity_id
+    classif.is_active = False
+    await session.commit()
+
+    await invalidate_entity_caches(entity_id)
+    return True

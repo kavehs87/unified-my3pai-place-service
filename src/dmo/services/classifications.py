@@ -15,7 +15,7 @@ async def list_classifications(
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[ClassificationListItem], int, str | None, bool]:
-    stmt = select(Classification)
+    stmt = select(Classification).where(col(Classification.is_active))
 
     if entity_id:
         stmt = stmt.where(col(Classification.entity_id) == entity_id)
@@ -91,6 +91,7 @@ async def list_classifications(
 async def list_categories(session: AsyncSession) -> list[str]:
     stmt = (
         select(col(Classification.category))
+        .where(col(Classification.is_active))
         .distinct()
         .order_by(col(Classification.category))
     )
