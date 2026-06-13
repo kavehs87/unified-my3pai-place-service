@@ -148,6 +148,8 @@ The function now runs in a single transaction (good), but it still emits one `UP
 ---
 
 ### 8. `update_entity` silently ignores single-coordinate updates
+**Status: ✅ FIXED** | `write.py` → sets `entity.latitude`/`entity.longitude` after popping from `update_data`
+
 **File:** `src/dmo/services/write.py:145-158`
 
 If the request contains only `latitude` or only `longitude`, both keys are popped and the database coordinate and `location` columns remain unchanged.
@@ -338,9 +340,9 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
-| High-Impact (P1) | 5 | 0 | 3 | 6 |
+| High-Impact (P1) | 5 | 0 | 4 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **7** | **29** |
+| **Total** | **28** | **1** | **8** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

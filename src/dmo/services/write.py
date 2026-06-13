@@ -160,6 +160,8 @@ async def update_entity(
     if need_location_update and new_lat is not None and new_lon is not None:
         update_data.pop("latitude", None)
         update_data.pop("longitude", None)
+        entity.latitude = new_lat
+        entity.longitude = new_lon
     elif "latitude" in update_data:
         update_data.pop("latitude", None)
     elif "longitude" in update_data:
