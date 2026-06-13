@@ -1,4 +1,4 @@
-# DMO — Unified Place Data Store & Query API
+# Unified My3Pai Place Service
 
 A provider-agnostic data store and query API for tourism and point-of-interest data. Ingests places from any source into a single normalized schema, then serves them through a fast, cached, spatially aware REST API.
 
