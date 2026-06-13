@@ -306,5 +306,15 @@ class ClassificationCreate(BaseModel):
     value_title: str | None = None
 
 
+class MediaCreateResponse(BaseModel):
+    id: int
+    entity_id: str
+
+
+class ClassificationCreateResponse(BaseModel):
+    id: int
+    entity_id: str
+
+
 class BulkEntityUpsert(BaseModel):
     entities: list[EntityCreate]

@@ -1,3 +1,5 @@
+import json
+
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -35,7 +37,9 @@ async def list_classifications(
     if cursor:
         from dmo.services.pagination import decode_cursor
         last_id, sort_key = decode_cursor(cursor)
-        cat, val = str(sort_key).split(":", 1)
+        sort_dict = json.loads(str(sort_key))
+        cat = sort_dict["c"]
+        val = sort_dict["v"]
         stmt = stmt.where(
             (col(Classification.category) > cat) |
             ((col(Classification.category) == cat) & (col(Classification.value_code) > val)) |
@@ -79,7 +83,7 @@ async def list_classifications(
     if has_more and classifications:
         from dmo.services.pagination import encode_cursor
         last = classifications[-1]
-        next_cursor = encode_cursor(last.entity_id, f"{last.category}:{last.value_code}")
+        next_cursor = encode_cursor(last.entity_id, json.dumps({"c": last.category, "v": last.value_code}))
 
     return items, total, next_cursor, has_more
 

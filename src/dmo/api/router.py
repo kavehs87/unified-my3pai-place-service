@@ -180,7 +180,7 @@ async def detail_endpoint(
     if not detail:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    asyncio.create_task(cache_set("detail", {"source": source, "source_id": source_id}, json.dumps(detail.model_dump(mode="json")), ttl=1800))
+    asyncio.create_task(cache_set("detail", {"source": source, "source_id": source_id}, json.dumps(detail.model_dump(mode="json")), ttl=60))
     return detail
 
 

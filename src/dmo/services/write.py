@@ -8,10 +8,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from dmo.models.database import Classification, Entity, Media
 from dmo.models.schemas import (
     ClassificationCreate,
+    ClassificationCreateResponse,
     EntityCreate,
     EntityListItem,
     EntityUpdate,
     MediaCreate,
+    MediaCreateResponse,
 )
 from dmo.services.cache import cache_delete_pattern
 
@@ -345,7 +347,7 @@ async def bulk_upsert(
 async def create_media(
     session: AsyncSession,
     data: MediaCreate,
-) -> dict:
+) -> MediaCreateResponse:
     stmt = select(Entity).where(col(Entity.id) == data.entity_id)
     entity = (await session.exec(stmt)).first()
     if not entity:
@@ -373,7 +375,7 @@ async def create_media(
     media_id = media.id
 
     await invalidate_entity_caches(data.entity_id)
-    return {"id": media_id, "entity_id": str(data.entity_id)}
+    return MediaCreateResponse(id=media_id, entity_id=str(data.entity_id))
 
 
 async def delete_media(
@@ -396,7 +398,7 @@ async def delete_media(
 async def create_classification(
     session: AsyncSession,
     data: ClassificationCreate,
-) -> dict:
+) -> ClassificationCreateResponse:
     stmt = select(Entity).where(col(Entity.id) == data.entity_id)
     entity = (await session.exec(stmt)).first()
     if not entity:
@@ -413,4 +415,4 @@ async def create_classification(
     await session.refresh(classif)
 
     await invalidate_entity_caches(data.entity_id)
-    return {"id": classif.id, "entity_id": str(data.entity_id)}
+    return ClassificationCreateResponse(id=classif.id, entity_id=str(data.entity_id))

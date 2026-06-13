@@ -85,7 +85,7 @@ class Entity(SQLModel, table=True):
     currency: str | None = Field(default=None, sa_column=Column(String(10)))
     price_min: float | None = Field(default=None, sa_column=Column(Numeric(12, 2)))
     price_max: float | None = Field(default=None, sa_column=Column(Numeric(12, 2)))
-    price_level: int | None = Field(default=None, sa_column=Column(Numeric))
+    price_level: int | None = Field(default=None, sa_column=Column(Integer))
 
     is_barrier_free: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("FALSE")))
     wheelchair_accessible: bool | None = Field(default=None, sa_column=Column(Boolean))

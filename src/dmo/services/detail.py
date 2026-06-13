@@ -20,8 +20,8 @@ async def get_detail(
 
     entity_result, media_result, classif_result = await asyncio.gather(
         session.exec(entity_stmt),
-        asyncio.ensure_future(_fetch_media_by_source(session, source, source_id)),
-        asyncio.ensure_future(_fetch_classifications_by_source(session, source, source_id)),
+        _fetch_media_by_source(session, source, source_id),
+        _fetch_classifications_by_source(session, source, source_id),
     )
     entity = entity_result.first()
 
