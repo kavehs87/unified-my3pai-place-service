@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy import tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -193,16 +194,31 @@ async def bulk_upsert(
     session: AsyncSession,
     entities: list[EntityCreate],
 ) -> list[EntityListItem]:
-    results = []
-    for data in entities:
-        stmt = select(Entity).where(
-            col(Entity.source) == data.source,
-            col(Entity.source_id) == data.source_id,
-        )
-        existing = (await session.exec(stmt)).first()
+    if not entities:
+        return []
 
-        if existing:
+    source_ids = [(d.source, d.source_id) for d in entities]
+
+    existing_stmt = select(Entity).where(
+        tuple_(Entity.source, Entity.source_id).in_(source_ids)
+    )
+    existing_rows = (await session.exec(existing_stmt)).all()
+    existing_map = {(e.source, e.source_id): e for e in existing_rows}
+
+    location_updates: list[tuple[UUID, float, float]] = []
+    new_entities: list[Entity] = []
+    new_entity_loc_updates: list[tuple[Entity, float, float]] = []
+    result_ids: list[UUID | None] = []
+    order: list[tuple[str, str]] = []
+
+    for data in entities:
+        key = (data.source, data.source_id)
+        order.append(key)
+
+        if key in existing_map:
+            existing = existing_map[key]
             update_data = data.model_dump(exclude_unset=False)
+
             need_location_update = False
             new_lat = existing.latitude
             new_lon = existing.longitude
@@ -221,14 +237,10 @@ async def bulk_upsert(
             for field, value in update_data.items():
                 setattr(existing, field, value)
 
-            existing_id = existing.id
-            await session.flush()
-
             if need_location_update and new_lat is not None and new_lon is not None:
-                await _set_location(session, existing_id, new_lon, new_lat)
+                location_updates.append((existing.id, new_lon, new_lat))
 
-            fresh = await _fetch_entity(session, existing_id)
-            results.append(EntityListItem.model_validate(fresh))
+            result_ids.append(existing.id)
         else:
             entity = Entity(
                 source=data.source,
@@ -287,19 +299,45 @@ async def bulk_upsert(
                 is_active=data.is_active,
             )
 
-            session.add(entity)
-            await session.flush()
-            entity_id = entity.id
+            new_entities.append(entity)
+            result_ids.append(None)  # placeholder, resolved after flush
 
             if data.latitude is not None and data.longitude is not None:
-                await _set_location(session, entity_id, data.longitude, data.latitude)
+                new_entity_loc_updates.append((entity, data.longitude, data.latitude))
 
-            fresh = await _fetch_entity(session, entity_id)
-            results.append(EntityListItem.model_validate(fresh))
+    if new_entities:
+        session.add_all(new_entities)
+
+    await session.flush()
+
+    # Resolve placeholder IDs for new entities after flush
+    if new_entities:
+        for i, entity in enumerate(new_entities):
+            # Find the placeholder index in result_ids
+            for j, rid in enumerate(result_ids):
+                if rid is None:
+                    result_ids[j] = entity.id
+                    break
+
+    # Resolve location updates for new entities
+    for entity, lon, lat in new_entity_loc_updates:
+        location_updates.append((entity.id, lon, lat))
+
+    if location_updates:
+        for entity_id, lon, lat in location_updates:
+            await _set_location(session, entity_id, lon, lat)
 
     await session.commit()
+
+    fresh_stmt = select(Entity).where(col(Entity.id).in_(result_ids))
+    fresh_rows = (await session.exec(fresh_stmt)).all()
+    fresh_map = {e.id: e for e in fresh_rows}
+
+    results = [EntityListItem.model_validate(fresh_map[eid]) for eid in result_ids]
+
     for r in results:
         await invalidate_entity_caches(r.id)
+
     return results
 
 
