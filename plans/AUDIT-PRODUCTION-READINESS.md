@@ -882,11 +882,11 @@ async def search(...):
             timeout=settings.query_timeout
         )
     except asyncio.TimeoutError:
-       raise HTTPException(
+        raise HTTPException(
             status_code=504,
             detail="Search query timeout"
         )
-    ```
+```
 
 #### Resolution
 
@@ -915,7 +915,19 @@ async def search(...):
 **File:** `src/dmo/db.py`  
 **Impact:** Phantom reads, lost updates
 
-Set `isolation_level="REPEATABLE_READ"` on the engine or use explicit transactions with `session.begin()`.
+  Set `isolation_level="REPEATABLE_READ"` on the engine or use explicit transactions with `session.begin()`.
+
+#### Resolution
+
+✅ **FIXED** — Set `isolation_level="REPEATABLE_READ"` on engine creation.
+
+- **Change**: Single line added to `create_async_engine()` call — `isolation_level="REPEATABLE_READ"`
+- **Effect**: All sessions from this engine use REPEATABLE_READ instead of PostgreSQL default READ_COMMITTED
+- **Benefit**: Prevents phantom reads and lost updates during multi-step write operations (read-then-write patterns in bulk upsert, create/update)
+- **Risk mitigation**: Bulk upsert already uses `pg_advisory_xact_lock` for serialization; REPEATABLE_READ adds protection against phantom reads between read phase and write phase
+
+**Files changed**: `src/dmo/db.py`
+**Tests added**: `tests/test_isolation.py` (2 tests: engine isolation level, write session isolation level)
 
 ---
 

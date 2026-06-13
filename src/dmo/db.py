@@ -21,6 +21,7 @@ def get_engine() -> AsyncEngine:
             max_overflow=settings.max_overflow,
             pool_pre_ping=True,
             pool_recycle=3600,
+            isolation_level="REPEATABLE_READ",
         )
         global async_session
         async_session = async_sessionmaker(_engine, class_=AsyncSession)
