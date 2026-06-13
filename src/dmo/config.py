@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
-    database_url_sync: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/dmo"
+    database_url: str | None = None
+    database_url_sync: str | None = None
     redis_url: str = "redis://localhost:6379/0"
     cache_ttl: int = 300
     rate_limit_enabled: bool = True

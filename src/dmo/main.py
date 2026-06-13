@@ -22,6 +22,8 @@ setup_logging(settings.log_level)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not settings.database_url:
+        raise ValueError("DATABASE_URL environment variable is required")
     yield
     if _cache is not None:
         await _cache.close()
@@ -45,7 +47,6 @@ if settings.allowed_origins == "*":
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )

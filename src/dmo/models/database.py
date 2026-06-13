@@ -109,6 +109,8 @@ class Entity(SQLModel, table=True):
         Index("idx_entity_collection_active", "collection_id", "is_active"),
         Index("idx_entity_attributes", "attributes", postgresql_using="gin"),
         Index("idx_entity_rating", "rating", postgresql_where="rating IS NOT NULL"),
+        Index("idx_entity_name_trgm", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
+        Index("idx_entity_summary_trgm", "summary", postgresql_using="gin", postgresql_ops={"summary": "gin_trgm_ops"}),
     )
 
 

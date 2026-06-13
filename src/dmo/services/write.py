@@ -101,21 +101,21 @@ async def create_entity(
 
     session.add(entity)
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError:
         await session.rollback()
         raise EntityError(f"Entity {data.source}/{data.source_id} already exists")
 
-    await session.refresh(entity)
     entity_id = entity.id
 
     if data.latitude is not None and data.longitude is not None:
         await _set_location(session, entity_id, data.longitude, data.latitude)
-        await session.commit()
 
-    fresh = await _fetch_entity(session, entity_id)
+    await session.commit()
+    await session.refresh(entity)
+
     await invalidate_entity_caches(entity_id)
-    return EntityListItem.model_validate(fresh)
+    return EntityListItem.model_validate(entity)
 
 
 async def update_entity(
@@ -159,15 +159,16 @@ async def update_entity(
         setattr(entity, field, value)
 
     entity_id = entity.id
-    await session.commit()
+    await session.flush()
 
     if need_location_update and new_lat is not None and new_lon is not None:
         await _set_location(session, entity_id, new_lon, new_lat)
-        await session.commit()
 
-    fresh = await _fetch_entity(session, entity_id)
+    await session.commit()
+    await session.refresh(entity)
+
     await invalidate_entity_caches(entity_id)
-    return EntityListItem.model_validate(fresh)
+    return EntityListItem.model_validate(entity)
 
 
 async def delete_entity(
