@@ -204,6 +204,83 @@ async def test_create_classification_entity_not_found(client: AsyncClient, sessi
 
 
 @pytest.mark.asyncio
+async def test_bulk_upsert_location_accuracy(client: AsyncClient, session: AsyncSession):
+    """Verify bulk upsert sets geography column correctly for diverse coordinates."""
+    entities = [
+        _make_entity_data(source_id="loc-001", name="Zurich", latitude=47.3769, longitude=8.5417),
+        _make_entity_data(source_id="loc-002", name="New York", latitude=40.7128, longitude=-74.0060),
+        _make_entity_data(source_id="loc-003", name="Sydney", latitude=-33.8688, longitude=151.2093),
+        _make_entity_data(source_id="loc-004", name="Equator", latitude=0.0, longitude=0.0),
+    ]
+    resp = await client.post("/entities/bulk", json=entities)
+    assert resp.status_code == 201
+    results = resp.json()
+    assert len(results) == 4
+
+    from sqlmodel import text as sql_text
+    for e in entities:
+        row = await session.exec(
+            sql_text("SELECT ST_AsText(location) FROM entities WHERE source = :src AND source_id = :sid").bindparams(
+                src=e["source"], sid=e["source_id"]
+            )
+        )
+        loc = row.scalar_one_or_none()
+        assert loc is not None, f"Location NULL for {e['source_id']}"
+        # ST_AsText outputs "POINT(lon lat)" — parse and compare as floats
+        coords = loc.replace("POINT(", "").replace(")", "").split()
+        assert float(coords[0]) == pytest.approx(e["longitude"], abs=1e-4), f"Wrong longitude for {e['source_id']}: {loc}"
+        assert float(coords[1]) == pytest.approx(e["latitude"], abs=1e-4), f"Wrong latitude for {e['source_id']}: {loc}"
+
+
+@pytest.mark.asyncio
+async def test_bulk_upsert_location_update_existing(client: AsyncClient, session: AsyncSession):
+    """Verify bulk upsert updates location on existing entities."""
+    from sqlmodel import text as sql_text
+
+    data = _make_entity_data(source_id="loc-upd-001", name="Original", latitude=46.95, longitude=7.45)
+    resp = await client.post("/entities", json=data)
+    assert resp.status_code == 201
+
+    row = await session.exec(
+        sql_text("SELECT ST_AsText(location) FROM entities WHERE source = 'test' AND source_id = 'loc-upd-001'")
+    )
+    assert "7.45" in row.scalar_one_or_none()
+
+    entities = [_make_entity_data(source_id="loc-upd-001", name="Updated", latitude=47.3769, longitude=8.5417)]
+    resp = await client.post("/entities/bulk", json=entities)
+    assert resp.status_code == 201
+
+    row = await session.exec(
+        sql_text("SELECT ST_AsText(location) FROM entities WHERE source = 'test' AND source_id = 'loc-upd-001'")
+    )
+    loc = row.scalar_one_or_none()
+    assert "8.5417" in loc and "47.3769" in loc, f"Location not updated: {loc}"
+
+
+@pytest.mark.asyncio
+async def test_set_locations_batch_empty(session: AsyncSession):
+    """Verify _set_locations_batch handles empty list without error."""
+    from dmo.services.write import _set_locations_batch
+    await _set_locations_batch(session, [])
+
+
+@pytest.mark.asyncio
+async def test_set_locations_batch_edge_values(session: AsyncSession):
+    """Verify _set_locations_batch handles edge case coordinates."""
+    from dmo.models.database import Entity
+    from dmo.services.write import _set_locations_batch
+
+    entity = Entity(source="test", source_id="edge-001", name="Edge", place_type="poi")
+    session.add(entity)
+    await session.flush()
+
+    await _set_locations_batch(session, [(entity.id, -180.0, -90.0)])
+    await session.commit()
+    await session.refresh(entity)
+    assert entity.location is not None
+
+
+@pytest.mark.asyncio
 async def test_write_invalidates_cache(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data(source_id="cache-test", name="Cache Test")
     resp = await client.post("/entities", json=data)

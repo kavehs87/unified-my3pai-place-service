@@ -47,13 +47,20 @@ async def _set_locations_batch(session: AsyncSession, updates: list[tuple[UUID, 
     if not updates:
         return
 
-    values = ", ".join(f"('{eid}'::uuid, {lon}, {lat})" for eid, lon, lat in updates)
-    query = f"""
+    params = {}
+    values = []
+    for i, (eid, lon, lat) in enumerate(updates):
+        values.append(f"(:p{i}_id, :p{i}_lon, :p{i}_lat)")
+        params[f"p{i}_id"] = str(eid)
+        params[f"p{i}_lon"] = lon
+        params[f"p{i}_lat"] = lat
+
+    query = text(f"""
         UPDATE entities SET location = ST_SetSRID(ST_MakePoint(tmp.lon, tmp.lat), 4326)
-        FROM (VALUES {values}) AS tmp(id, lon, lat)
-        WHERE entities.id = tmp.id
-    """
-    await session.execute(text(query))
+        FROM (VALUES {", ".join(values)}) AS tmp(id, lon, lat)
+        WHERE entities.id::text = tmp.id
+    """)
+    await session.execute(query.bindparams(**params))
 
 
 async def _fetch_entity(session: AsyncSession, entity_id: UUID) -> Entity:
