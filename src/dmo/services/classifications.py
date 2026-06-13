@@ -83,7 +83,7 @@ async def list_classifications(
     if has_more and classifications:
         from dmo.services.pagination import encode_cursor
         last = classifications[-1]
-        next_cursor = encode_cursor(last.entity_id, json.dumps({"c": last.category, "v": last.value_code}))
+        next_cursor = encode_cursor(last.id, json.dumps({"c": last.category, "v": last.value_code}))
 
     return items, total, next_cursor, has_more
 
