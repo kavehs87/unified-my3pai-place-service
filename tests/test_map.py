@@ -88,3 +88,37 @@ async def test_map_invalid_bbox(client: AsyncClient):
 async def test_map_invalid_bbox_values(client: AsyncClient):
     resp = await client.get("/map?bbox=abc,def,ghi,jkl")
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_map_pagination(client: AsyncClient, session: AsyncSession):
+    for i in range(5):
+        entity = _make_entity(name=f"POI {i}", lat=46.95 + i * 0.005, lon=7.45 + i * 0.005)
+        await _insert_with_location(session, entity)
+
+    resp = await client.get("/map?bbox=7.4,46.9,7.5,47.0&page_size=2")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 5
+    assert len(data["results"]) == 2
+    assert data["has_more"] is True
+    assert data["next_cursor"] is not None
+
+
+@pytest.mark.asyncio
+async def test_map_cursor_pagination(client: AsyncClient, session: AsyncSession):
+    for i in range(5):
+        entity = _make_entity(name=f"POI {i}", lat=46.95 + i * 0.005, lon=7.45 + i * 0.005)
+        await _insert_with_location(session, entity)
+
+    resp1 = await client.get("/map?bbox=7.4,46.9,7.5,47.0&page_size=2")
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["has_more"] is True
+    cursor = data1["next_cursor"]
+
+    resp2 = await client.get(f"/map?bbox=7.4,46.9,7.5,47.0&page_size=2&cursor={cursor}")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert len(data2["results"]) == 2
+    assert data1["results"][-1]["id"] != data2["results"][0]["id"]

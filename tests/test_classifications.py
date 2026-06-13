@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Classification, Entity
 
@@ -176,6 +177,66 @@ async def test_classifications_categories_empty(client: AsyncClient, session):
     assert resp.status_code == 200
     data = resp.json()
     assert data == []
+
+
+@pytest.mark.asyncio
+async def test_classifications_pagination(client: AsyncClient, session: AsyncSession):
+    entity = Entity(
+        source="dzt",
+        source_id="test-class-pag",
+        name="Pagination Entity",
+        place_type="poi",
+        latitude=47.0,
+        longitude=8.0,
+    )
+    session.add(entity)
+    await session.flush()
+    eid = str(entity.id)
+
+    for code, title in [("wheelchair", "Wheelchair"), ("elevator", "Elevator"), ("ramp", "Ramp"), ("audio", "Audio"), ("braille", "Braille")]:
+        c = Classification(entity_id=entity.id, category="accessibility", value_code=code, value_title=title)
+        session.add(c)
+    await session.commit()
+
+    resp = await client.get(f"/classifications?entity_id={eid}&page_size=2")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 5
+    assert len(data["results"]) == 2
+    assert data["has_more"] is True
+    assert data["next_cursor"] is not None
+
+
+@pytest.mark.asyncio
+async def test_classifications_cursor_pagination(client: AsyncClient, session: AsyncSession):
+    entity = Entity(
+        source="dzt",
+        source_id="test-class-cursor",
+        name="Cursor Entity",
+        place_type="poi",
+        latitude=47.0,
+        longitude=8.0,
+    )
+    session.add(entity)
+    await session.flush()
+    eid = str(entity.id)
+
+    for code, title in [("wheelchair", "Wheelchair"), ("elevator", "Elevator"), ("ramp", "Ramp"), ("audio", "Audio"), ("braille", "Braille")]:
+        c = Classification(entity_id=entity.id, category="accessibility", value_code=code, value_title=title)
+        session.add(c)
+    await session.commit()
+
+    resp1 = await client.get(f"/classifications?entity_id={eid}&page_size=2")
+    assert resp1.status_code == 200
+    data1 = resp1.json()
+    assert data1["has_more"] is True
+    cursor = data1["next_cursor"]
+
+    resp2 = await client.get(f"/classifications?entity_id={eid}&page_size=2&cursor={cursor}")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert len(data2["results"]) == 2
+    assert data1["results"][-1]["id"] != data2["results"][0]["id"]
 
 
 @pytest.mark.asyncio

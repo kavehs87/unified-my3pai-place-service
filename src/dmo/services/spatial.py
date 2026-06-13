@@ -69,6 +69,7 @@ async def nearby(
     rows = rows[:page_size]
 
     items = []
+    row_distances = []
     for row in rows:
         mapping = {k: v for k, v in row.items() if k not in ("distance_km", "total", "location")}
         entity = Entity.model_validate(mapping)
@@ -76,12 +77,13 @@ async def nearby(
         item = EntityListItem.model_validate(entity)
         item.distance_km = round(distance, 2) if distance else None
         items.append(item)
+        row_distances.append(distance)
 
     next_cursor: str | None = None
     if has_more and items:
         from dmo.services.pagination import encode_cursor
         last = items[-1]
-        next_cursor = encode_cursor(last.id, last.distance_km or 0)
+        next_cursor = encode_cursor(last.id, row_distances[-1] or 0)
 
     return items, total, next_cursor, has_more
 
@@ -155,6 +157,6 @@ async def map_query(
     if has_more and items:
         from dmo.services.pagination import encode_cursor
         last = items[-1]
-        next_cursor = encode_cursor(last.id, last.id)
+        next_cursor = encode_cursor(last.id, str(last.id))
 
     return items, total, next_cursor, has_more

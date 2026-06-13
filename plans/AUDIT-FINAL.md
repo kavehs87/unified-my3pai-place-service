@@ -119,13 +119,17 @@ Additionally, the SQLModel definition at `database.py:112` only references `idx_
 
 ### 4. No cursor pagination tests for spatial/classification endpoints
 
-**Status: ✅ ACKNOWLEDGED (from re-audit) — STILL NOT DONE**
+**Status: FIXED** ✅
 
 **Files:** `tests/test_nearby.py`, `tests/test_map.py`, `tests/test_classifications.py`
 
-`tests/test_search.py` has proper cursor pagination tests (`test_search_pagination`, `test_search_cursor_pagination`). The spatial and classification test files have **zero cursor pagination tests**. Given that spatial cursor pagination was completely broken in the first audit, this is a meaningful test gap.
+Added `test_*_pagination` and `test_*_cursor_pagination` tests for all three endpoints (6 new tests total).
 
-> **Verification: CONFIRMED.** `grep -l "cursor" tests/*.py` returns only `test_errors.py` and `test_search.py`. No cursor tests in nearby, map, or classification test files.
+**Bug fixes discovered while testing:**
+- `spatial.py` nearby: cursor used rounded `distance_km` (2 decimals) for comparison, but SQL uses full precision → items re-appeared on next page. Fixed by storing raw distance from row.
+- `spatial.py` map: `encode_cursor(last.id, last.id)` passed UUID as sort key → JSON serialization error. Fixed by using `str(last.id)`.
+
+> **Fix Commit:** `git add && git commit` below
 
 ---
 
