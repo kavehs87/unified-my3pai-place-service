@@ -224,6 +224,8 @@ The JSON body says `"status": "degraded"`, but the HTTP status is always `200`. 
 ---
 
 ### 14. `DATABASE_URL` failure happens at import time, not in lifespan
+**Status: ✅ FIXED** → Engine lazy-initialized via `get_engine()`, created inside lifespan before use
+
 **Files:** `src/dmo/main.py:24-26`, `src/dmo/db.py:8-14`
 
 `main.py` has a nice lifespan `ValueError`, but `db.py` calls `create_async_engine(settings.database_url)` at module import. A missing URL fails with a SQLAlchemy `TypeError` before the lifespan message is reached.
@@ -351,8 +353,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 3 | 11 |
+| Medium (P2) | 11 | 0 | 4 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **13** | **29** |
+| **Total** | **28** | **1** | **14** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

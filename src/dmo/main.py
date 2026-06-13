@@ -24,11 +24,14 @@ setup_logging(settings.log_level)
 async def lifespan(app: FastAPI):
     if not settings.database_url:
         raise ValueError("DATABASE_URL environment variable is required")
+    from dmo.db import get_engine
+    get_engine()
     yield
     if _cache is not None:
         await _cache.close()
-    from dmo.db import engine
-    await engine.dispose()
+    from dmo.db import _engine
+    if _engine is not None:
+        await _engine.dispose()
 
 
 app = FastAPI(
