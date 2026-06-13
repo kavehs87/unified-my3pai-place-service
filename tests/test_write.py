@@ -2,6 +2,10 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from dmo.config import settings
+
+WRITE_HEADERS = {"X-API-Key": settings.api_key}
+
 
 def _make_entity_data(**overrides):
     data = {
@@ -20,7 +24,7 @@ def _make_entity_data(**overrides):
 @pytest.mark.asyncio
 async def test_create_entity(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     result = resp.json()
     assert result["name"] == "Test Entity"
@@ -32,17 +36,17 @@ async def test_create_entity(client: AsyncClient, session: AsyncSession):
 @pytest.mark.asyncio
 async def test_create_entity_duplicate(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp1 = await client.post("/entities", json=data)
+    resp1 = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp1.status_code == 201
 
-    resp2 = await client.post("/entities", json=data)
+    resp2 = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp2.status_code == 409
 
 
 @pytest.mark.asyncio
 async def test_create_entity_with_attributes(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data(attributes={"distance_km": "5.2", "rating": "4.5"})
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     result = resp.json()
     assert result["attributes"]["distance_km"] == "5.2"
@@ -51,11 +55,11 @@ async def test_create_entity_with_attributes(client: AsyncClient, session: Async
 @pytest.mark.asyncio
 async def test_update_entity(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     update_data = {"name": "Updated Name", "summary": "New summary"}
-    resp = await client.put("/test/test-001", json=update_data)
+    resp = await client.put("/test/test-001", json=update_data, headers=WRITE_HEADERS)
     assert resp.status_code == 200
     result = resp.json()
     assert result["name"] == "Updated Name"
@@ -64,24 +68,24 @@ async def test_update_entity(client: AsyncClient, session: AsyncSession):
 @pytest.mark.asyncio
 async def test_update_entity_not_found(client: AsyncClient, session: AsyncSession):
     update_data = {"name": "Updated Name"}
-    resp = await client.put("/test/notfound", json=update_data)
+    resp = await client.put("/test/notfound", json=update_data, headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_delete_entity(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
-    resp = await client.delete("/test/test-001")
+    resp = await client.delete("/test/test-001", headers=WRITE_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["deleted"] is True
 
 
 @pytest.mark.asyncio
 async def test_delete_entity_not_found(client: AsyncClient, session: AsyncSession):
-    resp = await client.delete("/test/notfound")
+    resp = await client.delete("/test/notfound", headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 
@@ -91,7 +95,7 @@ async def test_bulk_upsert(client: AsyncClient, session: AsyncSession):
         _make_entity_data(source_id="bulk-001", name="Bulk 1"),
         _make_entity_data(source_id="bulk-002", name="Bulk 2"),
     ]
-    resp = await client.post("/entities/bulk", json=entities)
+    resp = await client.post("/entities/bulk", json=entities, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     results = resp.json()
     assert len(results) == 2
@@ -103,11 +107,11 @@ async def test_bulk_upsert(client: AsyncClient, session: AsyncSession):
 @pytest.mark.asyncio
 async def test_bulk_upsert_update_existing(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data(source_id="upsert-001", name="Original")
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     entities = [_make_entity_data(source_id="upsert-001", name="Updated")]
-    resp = await client.post("/entities/bulk", json=entities)
+    resp = await client.post("/entities/bulk", json=entities, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     results = resp.json()
     assert len(results) == 1
@@ -117,7 +121,7 @@ async def test_bulk_upsert_update_existing(client: AsyncClient, session: AsyncSe
 @pytest.mark.asyncio
 async def test_create_media(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     entity_id = resp.json()["id"]
 
@@ -127,7 +131,7 @@ async def test_create_media(client: AsyncClient, session: AsyncSession):
         "url": "https://example.com/photo.jpg",
         "name": "Test Photo",
     }
-    resp = await client.post("/media", json=media_data)
+    resp = await client.post("/media", json=media_data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     result = resp.json()
     assert result["entity_id"] == entity_id
@@ -141,14 +145,14 @@ async def test_create_media_entity_not_found(client: AsyncClient, session: Async
         "media_type": "image",
         "url": "https://example.com/photo.jpg",
     }
-    resp = await client.post("/media", json=media_data)
+    resp = await client.post("/media", json=media_data, headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_delete_media(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     entity_id = resp.json()["id"]
 
@@ -157,25 +161,25 @@ async def test_delete_media(client: AsyncClient, session: AsyncSession):
         "media_type": "image",
         "url": "https://example.com/photo.jpg",
     }
-    resp = await client.post("/media", json=media_data)
+    resp = await client.post("/media", json=media_data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     media_id = resp.json()["id"]
 
-    resp = await client.delete(f"/media/{media_id}")
+    resp = await client.delete(f"/media/{media_id}", headers=WRITE_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["deleted"] is True
 
 
 @pytest.mark.asyncio
 async def test_delete_media_not_found(client: AsyncClient, session: AsyncSession):
-    resp = await client.delete("/media/99999")
+    resp = await client.delete("/media/99999", headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_create_classification(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data()
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     entity_id = resp.json()["id"]
 
@@ -185,7 +189,7 @@ async def test_create_classification(client: AsyncClient, session: AsyncSession)
         "value_code": "museum",
         "value_title": "Museum",
     }
-    resp = await client.post("/classifications", json=classif_data)
+    resp = await client.post("/classifications", json=classif_data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     result = resp.json()
     assert result["entity_id"] == entity_id
@@ -199,7 +203,7 @@ async def test_create_classification_entity_not_found(client: AsyncClient, sessi
         "category": "tourism",
         "value_code": "museum",
     }
-    resp = await client.post("/classifications", json=classif_data)
+    resp = await client.post("/classifications", json=classif_data, headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 
@@ -212,7 +216,7 @@ async def test_bulk_upsert_location_accuracy(client: AsyncClient, session: Async
         _make_entity_data(source_id="loc-003", name="Sydney", latitude=-33.8688, longitude=151.2093),
         _make_entity_data(source_id="loc-004", name="Equator", latitude=0.0, longitude=0.0),
     ]
-    resp = await client.post("/entities/bulk", json=entities)
+    resp = await client.post("/entities/bulk", json=entities, headers=WRITE_HEADERS)
     assert resp.status_code == 201
     results = resp.json()
     assert len(results) == 4
@@ -238,7 +242,7 @@ async def test_bulk_upsert_location_update_existing(client: AsyncClient, session
     from sqlmodel import text as sql_text
 
     data = _make_entity_data(source_id="loc-upd-001", name="Original", latitude=46.95, longitude=7.45)
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     row = await session.exec(
@@ -247,7 +251,7 @@ async def test_bulk_upsert_location_update_existing(client: AsyncClient, session
     assert "7.45" in row.scalar_one_or_none()
 
     entities = [_make_entity_data(source_id="loc-upd-001", name="Updated", latitude=47.3769, longitude=8.5417)]
-    resp = await client.post("/entities/bulk", json=entities)
+    resp = await client.post("/entities/bulk", json=entities, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     row = await session.exec(
@@ -283,7 +287,7 @@ async def test_set_locations_batch_edge_values(session: AsyncSession):
 @pytest.mark.asyncio
 async def test_write_invalidates_cache(client: AsyncClient, session: AsyncSession):
     data = _make_entity_data(source_id="cache-test", name="Cache Test")
-    resp = await client.post("/entities", json=data)
+    resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     resp = await client.get("/search?q=Cache+Test")
@@ -291,7 +295,7 @@ async def test_write_invalidates_cache(client: AsyncClient, session: AsyncSessio
     resp.json()
 
     update_data = {"name": "Cache Test Updated"}
-    resp = await client.put("/test/cache-test", json=update_data)
+    resp = await client.put("/test/cache-test", json=update_data, headers=WRITE_HEADERS)
     assert resp.status_code == 200
 
     resp = await client.get("/search?q=Cache+Test+Updated")

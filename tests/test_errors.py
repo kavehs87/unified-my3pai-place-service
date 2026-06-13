@@ -4,7 +4,10 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from dmo.config import settings
 from dmo.models.database import Entity
+
+WRITE_HEADERS = {"X-API-Key": settings.api_key}
 
 
 @pytest.mark.asyncio
@@ -21,7 +24,7 @@ async def test_404_detail_error_format(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_404_delete_entity_error_format(client: AsyncClient):
-    resp = await client.delete("/unknown/source-123")
+    resp = await client.delete("/unknown/source-123", headers=WRITE_HEADERS)
     assert resp.status_code == 404
     data = resp.json()
     assert data["error"] == "NotFound"
@@ -30,7 +33,7 @@ async def test_404_delete_entity_error_format(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_404_delete_media_error_format(client: AsyncClient):
-    resp = await client.delete("/media/99999")
+    resp = await client.delete("/media/99999", headers=WRITE_HEADERS)
     assert resp.status_code == 404
     data = resp.json()
     assert data["error"] == "NotFound"
@@ -54,7 +57,7 @@ async def test_409_create_entity_conflict(client: AsyncClient, session: AsyncSes
         "source_id": "conflict-test",
         "name": "Duplicate",
         "place_type": "poi",
-    })
+    }, headers=WRITE_HEADERS)
     assert resp.status_code == 409
     data = resp.json()
     assert data["error"] == "Conflict"
@@ -65,7 +68,7 @@ async def test_409_create_entity_conflict(client: AsyncClient, session: AsyncSes
 async def test_409_update_entity_not_found(client: AsyncClient):
     resp = await client.put("/nonexistent/source-999", json={
         "name": "Updated Name"
-    })
+    }, headers=WRITE_HEADERS)
     assert resp.status_code == 404
     data = resp.json()
     assert data["error"] == "NotFound"
@@ -151,7 +154,7 @@ async def test_404_create_media_entity_not_found(client: AsyncClient):
         "entity_id": "00000000-0000-0000-0000-000000000000",
         "url": "https://example.com/image.jpg",
         "media_type": "image",
-    })
+    }, headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 
@@ -162,7 +165,7 @@ async def test_404_create_classification_entity_not_found(client: AsyncClient):
         "category": "accessibility",
         "value_code": "wheelchair",
         "value_title": "Wheelchair accessible",
-    })
+    }, headers=WRITE_HEADERS)
     assert resp.status_code == 404
 
 

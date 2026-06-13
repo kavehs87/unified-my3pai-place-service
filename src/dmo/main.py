@@ -24,6 +24,8 @@ setup_logging(settings.log_level)
 async def lifespan(app: FastAPI):
     if not settings.database_url:
         raise ValueError("DATABASE_URL environment variable is required")
+    if not settings.api_key:
+        raise ValueError("API_KEY environment variable is required")
     from dmo.db import get_engine
     get_engine()
     yield
