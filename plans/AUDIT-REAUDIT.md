@@ -301,6 +301,8 @@ Every request is logged at `INFO` (high volume under load), and 5xx responses pr
 ---
 
 ### 21. Minimal lint rules and unbounded dependencies
+**Status: ✅ FIXED** → Added B (bugbear) + SIM (simplify) lint rules; all deps have major-version upper bounds
+
 **File:** `pyproject.toml:6-19, 35-37`
 
 No security lint (`S`), no Pydantic-specific lint, and runtime dependencies use `>=` with no upper bound.
@@ -365,8 +367,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 10 | 11 |
+| Medium (P2) | 11 | 0 | 11 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **20** | **29** |
+| **Total** | **28** | **1** | **21** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

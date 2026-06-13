@@ -44,10 +44,10 @@ from dmo.services.write import (
     create_media as create_media_service,
 )
 from dmo.services.write import (
-    delete_entity as delete_entity_service,
+    delete_classification as delete_classification_service,
 )
 from dmo.services.write import (
-    delete_classification as delete_classification_service,
+    delete_entity as delete_entity_service,
 )
 from dmo.services.write import (
     delete_media as delete_media_service,
