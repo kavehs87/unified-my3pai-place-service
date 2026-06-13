@@ -19,10 +19,6 @@ class EntityError(Exception):
     pass
 
 
-async def invalidate_all_caches() -> None:
-    await cache_delete_pattern("dmo:*")
-
-
 async def invalidate_entity_caches(entity_id: UUID) -> None:
     await cache_delete_pattern("dmo:detail:*")
 
@@ -117,7 +113,7 @@ async def create_entity(
         await session.commit()
 
     fresh = await _fetch_entity(session, entity_id)
-    await invalidate_all_caches()
+    await invalidate_entity_caches(entity_id)
     return EntityListItem.model_validate(fresh)
 
 
@@ -169,7 +165,7 @@ async def update_entity(
         await session.commit()
 
     fresh = await _fetch_entity(session, entity_id)
-    await invalidate_all_caches()
+    await invalidate_entity_caches(entity_id)
     return EntityListItem.model_validate(fresh)
 
 
@@ -186,9 +182,10 @@ async def delete_entity(
     if not entity:
         return False
 
+    entity_id = entity.id
     entity.is_active = False
     await session.commit()
-    await invalidate_all_caches()
+    await invalidate_entity_caches(entity_id)
     return True
 
 
@@ -301,7 +298,8 @@ async def bulk_upsert(
             results.append(EntityListItem.model_validate(fresh))
 
     await session.commit()
-    await invalidate_all_caches()
+    for r in results:
+        await invalidate_entity_caches(r.id)
     return results
 
 
