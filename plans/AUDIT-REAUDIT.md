@@ -314,18 +314,23 @@ No security lint (`S`), no Pydantic-specific lint, and runtime dependencies use 
 ## Low / Polish Issues
 
 22. `spatial.py` accepts an unused `page: int = 1` parameter in `nearby()` and `map_query()`.
+> **Status: ✅ FIXED** → Removed unused `page` parameter from both functions
 > **Verification: CONFIRMED.** `spatial.py:16,98` declare `page: int = 1` but the parameter is never referenced in the function body.
 
 23. `.dockerignore` does not exclude `.venv/`, `.ruff_cache/`, `Dockerfile*`, or `*.md`.
+> **Status: ✅ FIXED** → Added `.venv/`, `.ruff_cache/`, `*.egg-info`, `Dockerfile*`, `*.md`, opencode config files
 > **Verification: CONFIRMED.** `.dockerignore` (10 lines) excludes `.git`, `tests/`, `loadtest/`, `plans/`, `docs/`, `__pycache__`, `*.pyc`, `.env`, `.env.*`, `.pytest_cache`. Missing `.venv/`, `.ruff_cache/`, `*.egg-info`, `Dockerfile*`, `*.md`, `__pycache__/`.
 
 24. Dockerfile final stage retains `gcc` after package install, increasing attack surface.
+> **Status: ✅ FIXED** → Removed `libpq-dev gcc` apt install (not needed, packages pre-built in builder stage)
 > **Verification: CONFIRMED.** `Dockerfile:11-13` installs `libpq-dev gcc` but only runs `rm -rf /var/lib/apt/lists/*`. Neither `gcc` nor `libpq-dev` are removed after the build.
 
 25. `EntityDetail` exposes the internal `is_active` flag in API responses.
+> **Status: ✅ FIXED** → Removed `is_active` from EntityDetail response model
 > **Verification: CONFIRMED.** `schemas.py:149` includes `is_active: bool = True` in `EntityDetail` response model.
 
 26. Several test files lack second-page cursor tests for spatial/classification endpoints and no concurrent race tests.
+> **Status: ✅ ACKNOWLEDGED** → Test coverage gap noted; would benefit from additional cursor pagination and concurrency tests
 > **Verification: LIKELY REAL.** Plausible gap; would require full test audit to confirm specific missing cases.
 
 ---
@@ -368,7 +373,7 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
 | Medium (P2) | 11 | 0 | 11 | 11 |
-| Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **21** | **29** |
+| Low/Polish (P3) | 5 | 0 | 5 | 6 |
+| **Total** | **28** | **1** | **26** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

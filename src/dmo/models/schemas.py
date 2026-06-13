@@ -146,7 +146,6 @@ class EntityDetail(BaseModel):
     rating: float | None = None
     reviews_count: int | None = None
     attributes: dict = {}
-    is_active: bool = True
     imported_at: datetime | None = None
     updated_at: datetime | None = None
     media: list[MediaItem] = []

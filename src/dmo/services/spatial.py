@@ -13,7 +13,6 @@ async def nearby(
     radius_km: float,
     source: str | None = None,
     place_type: str | None = None,
-    page: int = 1,
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
@@ -95,7 +94,6 @@ async def map_query(
     max_lat: float,
     source: str | None = None,
     place_type: str | None = None,
-    page: int = 1,
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
