@@ -257,6 +257,8 @@ A single `ratelimit:global` key means one aggressive client can starve everyone.
 ---
 
 ### 17. No `pool_recycle`
+**Status: ✅ FIXED** → Added `pool_recycle=3600` (1 hour) to engine config
+
 **File:** `src/dmo/db.py:8-14`
 
 Long-lived idle connections can go stale after network blips or DB-side timeouts.
@@ -357,8 +359,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 6 | 11 |
+| Medium (P2) | 11 | 0 | 7 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **16** | **29** |
+| **Total** | **28** | **1** | **17** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
