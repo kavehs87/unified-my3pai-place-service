@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
