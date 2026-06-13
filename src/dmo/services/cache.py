@@ -29,17 +29,14 @@ def _make_key(endpoint: str, params: dict[str, str | int | float | None]) -> str
 
 
 async def cache_get(endpoint: str, params: dict[str, str | int | float | None]) -> str | None:
-    try:
-        client = await get_cache()
-        key = _make_key(endpoint, params)
-        value = await client.get(key)
-        if value is not None:
-            CACHE_HITS.inc()
-        else:
-            CACHE_MISSES.inc()
-        return value
-    except (redis.ConnectionError, redis.RedisError):
-        return None
+    client = await get_cache()
+    key = _make_key(endpoint, params)
+    value = await client.get(key)
+    if value is not None:
+        CACHE_HITS.inc()
+    else:
+        CACHE_MISSES.inc()
+    return value
 
 
 async def cache_set(
@@ -48,21 +45,15 @@ async def cache_set(
     value: str,
     ttl: int | None = None,
 ) -> None:
-    try:
-        client = await get_cache()
-        key = _make_key(endpoint, params)
-        await client.set(key, value, ex=ttl or settings.cache_ttl)
-    except (redis.ConnectionError, redis.RedisError) as e:
-        logger.error("cache_set_failed", endpoint=endpoint, error=str(e))
+    client = await get_cache()
+    key = _make_key(endpoint, params)
+    await client.set(key, value, ex=ttl or settings.cache_ttl)
 
 
 async def cache_delete_pattern(pattern: str) -> None:
-    try:
-        client = await get_cache()
-        async for key in client.scan_iter(match=pattern):
-            await client.delete(key)
-    except (redis.ConnectionError, redis.RedisError) as e:
-        logger.error("cache_delete_pattern_failed", pattern=pattern, error=str(e))
+    client = await get_cache()
+    async for key in client.scan_iter(match=pattern):
+        await client.delete(key)
 
 
 def _cache_task_done(task: asyncio.Task) -> None:

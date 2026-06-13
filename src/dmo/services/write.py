@@ -142,10 +142,10 @@ async def create_entity(
     if data.latitude is not None and data.longitude is not None:
         await _set_location(session, entity_id, data.longitude, data.latitude)
 
+    await invalidate_entity_caches(entity_id)
     await session.commit()
     await session.refresh(entity)
 
-    await invalidate_entity_caches(entity_id)
     return EntityListItem.model_validate(entity)
 
 
@@ -197,10 +197,10 @@ async def update_entity(
     if need_location_update and new_lat is not None and new_lon is not None:
         await _set_location(session, entity_id, new_lon, new_lat)
 
+    await invalidate_entity_caches(entity_id)
     await session.commit()
     await session.refresh(entity)
 
-    await invalidate_entity_caches(entity_id)
     return EntityListItem.model_validate(entity)
 
 
@@ -219,8 +219,8 @@ async def delete_entity(
 
     entity_id = entity.id
     entity.is_active = False
-    await session.commit()
     await invalidate_entity_caches(entity_id)
+    await session.commit()
     return True
 
 
@@ -359,18 +359,17 @@ async def bulk_upsert(
     if location_updates:
         await _set_locations_batch(session, location_updates)
 
+    for eid in result_ids:
+        if eid is not None:
+            await invalidate_entity_caches(eid)
+
     await session.commit()
 
     fresh_stmt = select(Entity).where(col(Entity.id).in_(result_ids))
     fresh_rows = (await session.exec(fresh_stmt)).all()
     fresh_map = {e.id: e for e in fresh_rows}
 
-    results = [EntityListItem.model_validate(fresh_map[eid]) for eid in result_ids]
-
-    for r in results:
-        await invalidate_entity_caches(r.id)
-
-    return results
+    return [EntityListItem.model_validate(fresh_map[eid]) for eid in result_ids]
 
 
 async def create_media(
@@ -399,11 +398,11 @@ async def create_media(
         is_muted=data.is_muted,
     )
     session.add(media)
+    await invalidate_entity_caches(data.entity_id)
     await session.commit()
     await session.refresh(media)
     media_id = media.id
 
-    await invalidate_entity_caches(data.entity_id)
     return MediaCreateResponse(id=media_id, entity_id=str(data.entity_id))
 
 
@@ -418,9 +417,8 @@ async def delete_media(
 
     entity_id = media.entity_id
     media.is_active = False
-    await session.commit()
-
     await invalidate_entity_caches(entity_id)
+    await session.commit()
     return True
 
 
@@ -440,10 +438,10 @@ async def create_classification(
         value_title=data.value_title,
     )
     session.add(classif)
+    await invalidate_entity_caches(data.entity_id)
     await session.commit()
     await session.refresh(classif)
 
-    await invalidate_entity_caches(data.entity_id)
     return ClassificationCreateResponse(id=classif.id, entity_id=str(data.entity_id))
 
 
@@ -458,7 +456,6 @@ async def delete_classification(
 
     entity_id = classif.entity_id
     classif.is_active = False
-    await session.commit()
-
     await invalidate_entity_caches(entity_id)
+    await session.commit()
     return True

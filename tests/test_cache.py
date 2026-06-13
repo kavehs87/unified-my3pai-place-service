@@ -49,18 +49,45 @@ async def test_cache_key_deterministic():
 
 
 @pytest.mark.asyncio
-async def test_cache_connection_error_graceful():
+async def test_cache_delete_pattern_deletes_keys():
+    """Verify cache_delete_pattern properly deletes matching keys."""
+    from dmo.services import cache as cache_module
+
+    async def fake_scan_iter(match):
+        yield "dmo:search:abc123"
+        yield "dmo:search:def456"
+
+    fake_client = AsyncMock()
+    fake_client.scan_iter = fake_scan_iter
+    fake_client.delete = AsyncMock()
+
+    with patch.object(cache_module, "get_cache", new_callable=AsyncMock) as mock_get_cache:
+        mock_get_cache.return_value = fake_client
+        await cache_module.cache_delete_pattern("dmo:search:*")
+        assert fake_client.delete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cache_delete_pattern_raises_on_error():
+    """Cache errors propagate to enforce strong consistency."""
     import redis.asyncio as redis_module
 
     from dmo.services import cache as cache_module
 
-    with patch.object(cache_module, "get_cache", new_callable=AsyncMock, side_effect=redis_module.ConnectionError):
-        result = await cache_module.cache_get("search", {"q": "test"})
-        assert result is None
+    class FailingAsyncIterator:
+        def __aiter__(self):
+            return self
 
-        await cache_module.cache_set("search", {"q": "test"}, "value", ttl=300)
+        async def __anext__(self):
+            raise redis_module.ConnectionError("connection refused")
 
-        await cache_module.cache_delete_pattern("dmo:search:*")
+    fake_client = AsyncMock()
+    fake_client.scan_iter = lambda match: FailingAsyncIterator()
+
+    with patch.object(cache_module, "get_cache", new_callable=AsyncMock) as mock_get_cache:
+        mock_get_cache.return_value = fake_client
+        with pytest.raises(redis_module.ConnectionError):
+            await cache_module.cache_delete_pattern("dmo:search:*")
 
 
 @pytest.mark.asyncio
