@@ -233,6 +233,11 @@ async def bulk_upsert(
 
     source_ids = [(d.source, d.source_id) for d in entities]
 
+    # Serialize bulk operations to prevent race condition
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=1234567890)
+    )
+
     existing_stmt = select(Entity).where(
         tuple_(Entity.source, Entity.source_id).in_(source_ids)
     )

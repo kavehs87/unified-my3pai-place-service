@@ -302,3 +302,25 @@ async def test_write_invalidates_cache(client: AsyncClient, session: AsyncSessio
     assert resp.status_code == 200
     new_results = resp.json()
     assert any("Cache Test Updated" in r.get("name", "") for r in new_results.get("results", []))
+
+
+@pytest.mark.asyncio
+async def test_bulk_upsert_concurrent_no_conflict(client: AsyncClient, session: AsyncSession):
+    """Two concurrent bulk upserts with overlapping source_ids should both succeed (serialized by advisory lock)."""
+    import asyncio
+
+    batch_a = [_make_entity_data(source_id="concurrent-shared", name="Batch A")]
+    batch_b = [_make_entity_data(source_id="concurrent-shared", name="Batch B")]
+
+    async def post_bulk(data):
+        return await client.post("/entities/bulk", json=data, headers=WRITE_HEADERS)
+
+    resp_a, resp_b = await asyncio.gather(post_bulk(batch_a), post_bulk(batch_b))
+    assert resp_a.status_code == 201
+    assert resp_b.status_code == 201
+
+    # The second batch (serialized by lock) should have updated the entity
+    resp = await client.get("/search?q=Batch")
+    assert resp.status_code == 200
+    results = resp.json()
+    assert len(results["results"]) >= 1
