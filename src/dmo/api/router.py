@@ -12,6 +12,7 @@ from dmo.models.schemas import (
     ClassificationListItem,
     CursorPaginatedResponse,
     EntityCreate,
+    EntityDetail,
     EntityListItem,
     EntityUpdate,
     MediaCreate,
@@ -62,7 +63,7 @@ def verify_api_key(x_api_key: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-@router.get("/search")
+@router.get("/search", response_model=CursorPaginatedResponse[EntityListItem])
 async def search_endpoint(
     session: SessionDep,
     q: str | None = Query(None, max_length=500),
@@ -74,7 +75,7 @@ async def search_endpoint(
 ):
     cached = await cache_get("search", {"q": q, "source": source, "place_type": place_type, "country": country, "page_size": page_size, "cursor": cursor})
     if cached:
-        return json.loads(cached)
+        return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
 
     items, total, next_cursor, has_more = await search_service(session, q, source, place_type, country, cursor=cursor, page_size=page_size)
 
@@ -83,7 +84,7 @@ async def search_endpoint(
     return result
 
 
-@router.get("/nearby")
+@router.get("/nearby", response_model=CursorPaginatedResponse[EntityListItem])
 async def nearby_endpoint(
     session: SessionDep,
     lat: float = Query(..., ge=-90, le=90),
@@ -96,7 +97,7 @@ async def nearby_endpoint(
 ):
     cached = await cache_get("nearby", {"lat": lat, "lon": lon, "radius_km": radius_km, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor})
     if cached:
-        return json.loads(cached)
+        return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
 
     items, total, next_cursor, has_more = await nearby_service(session, lat, lon, radius_km, source, place_type, cursor=cursor, page_size=page_size)
 
@@ -105,7 +106,7 @@ async def nearby_endpoint(
     return result
 
 
-@router.get("/map")
+@router.get("/map", response_model=CursorPaginatedResponse[EntityListItem])
 async def map_endpoint(
     session: SessionDep,
     bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat", max_length=100),
@@ -129,7 +130,7 @@ async def map_endpoint(
 
     cached = await cache_get("map", {"bbox": bbox, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor})
     if cached:
-        return json.loads(cached)
+        return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
 
     items, total, next_cursor, has_more = await map_query_service(session, min_lon, min_lat, max_lon, max_lat, source, place_type, cursor=cursor, page_size=page_size)
 
@@ -138,7 +139,7 @@ async def map_endpoint(
     return result
 
 
-@router.get("/classifications/categories")
+@router.get("/classifications/categories", response_model=list[str])
 async def categories_endpoint(
     session: SessionDep,
 ):
@@ -152,7 +153,7 @@ async def categories_endpoint(
     return categories
 
 
-@router.get("/classifications")
+@router.get("/classifications", response_model=CursorPaginatedResponse[ClassificationListItem])
 async def classifications_endpoint(
     session: SessionDep,
     entity_id: str | None = Query(None, max_length=500),
@@ -163,7 +164,7 @@ async def classifications_endpoint(
 ):
     cached = await cache_get("classifications", {"entity_id": entity_id, "category": category, "value_code": value_code, "page_size": page_size, "cursor": cursor})
     if cached:
-        return json.loads(cached)
+        return CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(cached))
 
     items, total, next_cursor, has_more = await list_classifications_service(session, entity_id, category, value_code, cursor=cursor, page_size=page_size)
 
@@ -172,7 +173,7 @@ async def classifications_endpoint(
     return result
 
 
-@router.get("/{source}/{source_id}")
+@router.get("/{source}/{source_id}", response_model=EntityDetail)
 async def detail_endpoint(
     session: SessionDep,
     source: str,
@@ -180,7 +181,7 @@ async def detail_endpoint(
 ):
     cached = await cache_get("detail", {"source": source, "source_id": source_id})
     if cached:
-        return json.loads(cached)
+        return EntityDetail.model_validate(json.loads(cached))
 
     detail = await get_detail_service(session, source, source_id)
     if not detail:

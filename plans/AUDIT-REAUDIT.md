@@ -118,6 +118,8 @@ The final `Dockerfile` copies only `pyproject.toml` and `src/` into the runtime 
 ---
 
 ### 6. Cache-hit responses bypass Pydantic validation and response models
+**Status: ✅ FIXED** | `router.py` → added `response_model` to all 6 GET endpoints, cache hits validate through `model_validate()`
+
 **File:** `src/dmo/api/router.py:71, 93, 126, 141, 160, 177`
 
 Every cache hit returns `json.loads(cached)` directly. None of the GET endpoints declare `response_model`, so FastAPI never enforces output shape. Schema changes can serve stale or invalid JSON until the cache TTL expires.
@@ -334,9 +336,9 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
-| High-Impact (P1) | 5 | 0 | 1 | 6 |
+| High-Impact (P1) | 5 | 0 | 2 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **5** | **29** |
+| **Total** | **28** | **1** | **6** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
