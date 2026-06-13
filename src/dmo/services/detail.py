@@ -4,7 +4,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Classification, Entity, Media
-from dmo.models.schemas import ClassificationItem, EntityDetail, MediaItem
+from dmo.models.schemas import ClassificationItem, EntityDetail, MediaItem, OpenStatus
 
 
 async def get_detail(
@@ -67,3 +67,20 @@ async def _fetch_classifications_by_source(
     )
     result = await session.exec(stmt)
     return result.all()
+
+
+async def get_open_status(
+    session: AsyncSession,
+    source: str,
+    source_id: str,
+) -> OpenStatus | None:
+    stmt = select(Entity.is_open, Entity.opens_at, Entity.closes_at).where(
+        col(Entity.source) == source,
+        col(Entity.source_id) == source_id,
+        col(Entity.is_active),
+    )
+    result = await session.exec(stmt)
+    row = result.first()
+    if not row:
+        return None
+    return OpenStatus(is_open=row[0], opens_at=row[1], closes_at=row[2])

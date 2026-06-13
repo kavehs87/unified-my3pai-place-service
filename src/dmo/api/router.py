@@ -24,6 +24,7 @@ from dmo.services.classifications import (
     list_classifications as list_classifications_service,
 )
 from dmo.services.detail import get_detail as get_detail_service
+from dmo.services.detail import get_open_status as get_open_status_service
 from dmo.services.search import search as search_service
 from dmo.services.spatial import map_query as map_query_service
 from dmo.services.spatial import nearby as nearby_service
@@ -178,15 +179,38 @@ async def detail_endpoint(
     source: str,
     source_id: str,
 ):
-    cached = await cache_get("detail", {"source": source, "source_id": source_id})
+    detail_params = {"source": source, "source_id": source_id}
+    cached = await cache_get("detail", detail_params)
+
     if cached:
-        return EntityDetail.model_validate(json.loads(cached))
+        detail = EntityDetail.model_validate(json.loads(cached))
+        open_cached = await cache_get("open_status", detail_params)
+        if open_cached:
+            from dmo.models.schemas import OpenStatus
+            open_status = OpenStatus.model_validate(json.loads(open_cached))
+        else:
+            open_status = await get_open_status_service(session, source, source_id)
+            if open_status:
+                await cache_set_async("open_status", detail_params, json.dumps(open_status.model_dump(mode="json")), ttl=60)
+        if open_status:
+            detail.is_open = open_status.is_open
+            detail.opens_at = open_status.opens_at
+            detail.closes_at = open_status.closes_at
+        return detail
 
     detail = await get_detail_service(session, source, source_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    await cache_set_async("detail", {"source": source, "source_id": source_id}, json.dumps(detail.model_dump(mode="json")), ttl=60)
+    open_status = await get_open_status_service(session, source, source_id)
+
+    await cache_set_async("detail", detail_params, json.dumps(detail.model_dump(mode="json")), ttl=1800)
+    if open_status:
+        await cache_set_async("open_status", detail_params, json.dumps(open_status.model_dump(mode="json")), ttl=60)
+
+    detail.is_open = open_status.is_open if open_status else detail.is_open
+    detail.opens_at = open_status.opens_at if open_status else detail.opens_at
+    detail.closes_at = open_status.closes_at if open_status else detail.closes_at
     return detail
 
 

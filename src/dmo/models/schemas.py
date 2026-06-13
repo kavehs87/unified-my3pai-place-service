@@ -305,3 +305,9 @@ class MediaCreateResponse(BaseModel):
 class ClassificationCreateResponse(BaseModel):
     id: int
     entity_id: str
+
+
+class OpenStatus(BaseModel):
+    is_open: bool | None = None
+    opens_at: datetime | None = None
+    closes_at: datetime | None = None

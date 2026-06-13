@@ -176,6 +176,8 @@ Cache writes are now scheduled with `asyncio.create_task` (good), but `cache_set
 ---
 
 ### 10. Detail cache TTL of 60 s applies to the entire response
+**Status: ✅ FIXED** | `detail.py` → `get_open_status` service, `router.py` → dual cache (detail 30m + open_status 60s), merged at response time
+
 **File:** `src/dmo/api/router.py:183`
 
 The entire `EntityDetail` object is cached for 60 seconds to satisfy the open-status TTL rule. Stable fields (name, description, media, classifications) are over-invalidated.
@@ -342,9 +344,9 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
-| High-Impact (P1) | 5 | 0 | 5 | 6 |
+| High-Impact (P1) | 5 | 0 | 6 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **9** | **29** |
+| **Total** | **28** | **1** | **10** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

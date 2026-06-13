@@ -25,6 +25,7 @@ class EntityError(Exception):
 async def invalidate_entity_caches(entity_id: UUID) -> None:
     for pattern in (
         "dmo:detail:*",
+        "dmo:open_status:*",
         "dmo:search:*",
         "dmo:nearby:*",
         "dmo:map:*",
