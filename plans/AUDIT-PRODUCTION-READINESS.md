@@ -18,7 +18,7 @@ The project has received three prior audits with claimed improvements, but **cri
 1. ~~**SQL Injection in batch location updates** — Bypasses parameterized queries~~ ✅ **FIXED June 14**
 2. ~~**API authentication disabled by default** — Empty API key allows public write access~~ ✅ **FIXED June 14**
 3. ~~**Cache invalidation failures cause data inconsistency** — Database commits succeed while cache remains stale~~ ✅ **FIXED June 14**
-4. **Race condition in bulk operations** — Concurrent writes can cause entire batches to fail
+4. ~~**Race condition in bulk operations** — Concurrent writes can cause entire batches to fail~~ ✅ **FIXED June 14**
 5. **Missing transaction isolation** — No REPEATABLE_READ guard against phantom reads
 6. **Cursor validation missing** — Malformed cursors cause 500 errors (DoS vector)
 
@@ -340,9 +340,10 @@ async with session.begin_nested():  # Savepoint
 ---
 
 ### 4. Race Condition in Bulk Upsert Operations
-**Severity:** 🔴 **CRITICAL**  
+**Severity:** 🔴 **CRITICAL** ✅ **FIXED**  
 **File:** `src/dmo/services/write.py:220-366`  
-**Risk Level:** Data loss, complete batch failure
+**Risk Level:** Data loss, complete batch failure  
+**Fixed:** June 14, 2026
 
 #### Problem
 
@@ -421,6 +422,24 @@ async def bulk_upsert_locked(session: AsyncSession, entities: list[EntityCreate]
     finally:
         await session.execute(text(f"SELECT pg_advisory_unlock({abs(lock_hash % 2**31)})"))
 ```
+
+#### Fix Applied
+
+Added PostgreSQL advisory lock to serialize bulk operations:
+
+```python
+# At the start of bulk_upsert, before fetching existing entities
+await session.execute(
+    text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=1234567890)
+)
+```
+
+Using `pg_advisory_xact_lock` (session-scoped) rather than `pg_advisory_lock` because:
+- Auto-releases on commit or rollback — no explicit unlock needed
+- No risk of forgotten unlock leaving dead lock
+- Simpler code, fewer failure modes
+
+Concurrent bulk upserts are serialized by the lock, eliminating the race window. Bulk operations are infrequent in practice, so serialization has minimal impact on throughput.
 
 ---
 
@@ -1041,7 +1060,7 @@ Before deploying to production, ensure:
 - [ ] SQL injection in `_set_locations_batch` is fixed (parameterized queries)
 - [ ] API key validation enforces non-empty key in production
 - [x] Cache invalidation failures are logged and handled
-- [ ] Bulk upsert uses PostgreSQL UPSERT or advisory locks
+- [x] Bulk upsert uses PostgreSQL UPSERT or advisory locks
 - [ ] Transaction isolation is set to REPEATABLE_READ
 - [ ] XSS in HTML converter is fixed (escape attributes)
 - [ ] Cache stampede mitigation is implemented (locking or generation IDs)
