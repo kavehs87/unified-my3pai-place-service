@@ -246,6 +246,8 @@ A single `ratelimit:global` key means one aggressive client can starve everyone.
 ---
 
 ### 16. Production `.env` examples recommend unsafe connection math
+**Status: ✅ FIXED** → Reduced to POOL_SIZE=10, MAX_OVERFLOW=5 (60 total with 4 workers)
+
 **Files:** `.env.example:8-9`, `.env.production.example:8-9`
 
 `POOL_SIZE=20` and `MAX_OVERFLOW=10` with 4 uvicorn workers = 120 connections, exceeding the PostgreSQL default `max_connections=100`. The code defaults are safe, but the example files are dangerous.
@@ -355,8 +357,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 5 | 11 |
+| Medium (P2) | 11 | 0 | 6 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **15** | **29** |
+| **Total** | **28** | **1** | **16** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
