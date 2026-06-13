@@ -142,13 +142,13 @@ Replaced O(n) sequential `_set_location` calls with `_set_locations_batch`, whic
 
 ### 6. Migration 001 lacks downgrade path for `idx_entities_name_trgm`
 
-**Status: MINOR QUALITY**
+**Status: DISMISSED** — Not a real issue
 
 **File:** `migrations/versions/001_initial_schema.py:95`
 
-The index `idx_entities_name_trgm` is created via `op.execute()` raw SQL but the `downgrade()` function has no corresponding `op.execute("DROP INDEX ...")`. Rolling back migration 001 leaves this index orphaned.
+The index `idx_entities_name_trgm` is created via `op.execute()` raw SQL but the `downgrade()` function has no corresponding `op.execute("DROP INDEX ...")`. However, `downgrade()` does `op.drop_table("entities")`, which automatically drops all indexes on the table. No orphaned index remains.
 
-> **Verification: CONFIRMED.** `downgrade()` at line 142 drops tables and extensions but not the GIN trigram index created at line 95.
+> **Dismissal:** `DROP TABLE` cascades to all indexes on that table. No fix needed.
 
 ---
 
