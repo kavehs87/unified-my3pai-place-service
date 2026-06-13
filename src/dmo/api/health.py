@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
@@ -9,21 +11,27 @@ from dmo.services.cache import get_cache
 
 health_router = APIRouter()
 
+_HEALTH_TIMEOUT = 3.0
+
 
 @health_router.get("/health")
 async def health(session: AsyncSession = Depends(get_session)):
     components: dict[str, str] = {}
 
     try:
-        await session.exec(text("SELECT 1"))
+        await asyncio.wait_for(session.exec(text("SELECT 1")), timeout=_HEALTH_TIMEOUT)
         components["database"] = "up"
+    except TimeoutError:
+        components["database"] = "timeout"
     except Exception:
         components["database"] = "down"
 
     try:
         redis: Redis = await get_cache()
-        await redis.ping()
+        await asyncio.wait_for(redis.ping(), timeout=_HEALTH_TIMEOUT)
         components["redis"] = "up"
+    except TimeoutError:
+        components["redis"] = "timeout"
     except Exception:
         components["redis"] = "down"
 
