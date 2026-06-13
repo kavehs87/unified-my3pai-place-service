@@ -137,6 +137,7 @@ class Media(SQLModel, table=True):
 
     __table_args__ = (
         UniqueConstraint("entity_id", "url", name="uq_media_entity_url"),
+        Index("idx_media_entity_id", "entity_id"),
     )
 
 
@@ -152,6 +153,7 @@ class Classification(SQLModel, table=True):
 
     __table_args__ = (
         UniqueConstraint("entity_id", "category", "value_code", name="uq_classif_entity_value"),
+        Index("idx_classification_entity_id", "entity_id"),
     )
 
 
