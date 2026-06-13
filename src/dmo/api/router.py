@@ -1,6 +1,8 @@
 import json
 from typing import Annotated
 
+from pydantic import TypeAdapter
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -148,7 +150,7 @@ async def categories_endpoint(
 ):
     cached = await cache_get("categories", {})
     if cached:
-        return json.loads(cached)
+        return TypeAdapter(list[str]).validate_python(json.loads(cached))
 
     categories = await list_categories_service(session)
 

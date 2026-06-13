@@ -80,7 +80,7 @@ def downgrade():
 
 ### 2. `/classifications/categories` cache hit bypasses response model validation
 
-**Status: ⚠️ CONSISTENCY ISSUE (downgraded from P1 → P3)**
+**Status: ✅ FIXED**
 
 **File:** `src/dmo/api/router.py:149-151`
 
@@ -92,7 +92,7 @@ if cached:
 
 All 6 other GET endpoints properly validate cache hits through `model_validate()`. This is the one remaining endpoint with the old pattern.
 
-**Fix:** `return response_model.model_validate(json.loads(cached))` or simply trust that `list[str]` is safe (a raw list of strings can't really break). Consistency fix regardless.
+**Fix applied:** Used `pydantic.TypeAdapter(list[str]).validate_python(json.loads(cached))` for consistent validation.
 
 > **Verification: CONFIRMED.** `router.py:151` returns `json.loads(cached)` directly. Every other cache-hit path (lines 81, 103, 136, 170, 189) validates through `model_validate()`.
 >
@@ -240,7 +240,7 @@ All strengths identified in the previous audits remain intact. Additionally, the
 | **P1** | 4 | Add cursor pagination tests for spatial + classification | Medium |
 | **P2** | 5 | Batch `_set_location` in bulk_upsert | Medium |
 | **P2** | 3 | Drop duplicate trigram index `idx_entities_name_trgm` | Low |
-| **P3** | 2 | Fix categories cache-hit bypass (consistency only) | Low |
+| ~~**P3**~~ | 2 | ~~Fix categories cache-hit bypass (consistency only)~~ | ~~Low~~ |
 | **P3** | 7 | Fix Docker Compose DB healthcheck user | Low |
 | **P3** | 6 | Add downgrade path for 001 trigram index | Low |
 | **P3** | 8 | Remove conftest.py ALTER TABLE hacks after migration 006 | Low |
@@ -254,7 +254,7 @@ The codebase has gone from **C+ (prototype)** to **B+ (near-production)** across
 
 **No remaining blockers.** The missing `is_active` migration for media/classifications (P0) has been fixed.
 
-**Total remaining issues: 7 actionable** (0 critical, 1 medium-impact, 5 polish) + 1 dismissed as nitpicking (#9).
+**Total remaining issues: 6 actionable** (0 critical, 1 medium-impact, 4 polish) + 1 dismissed as nitpicking (#9).
 
 ---
 
