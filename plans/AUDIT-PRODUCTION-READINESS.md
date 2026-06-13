@@ -952,6 +952,18 @@ def validate_coordinates(cls, v, info):
     return v
 ```
 
+#### Resolution
+
+✅ **FIXED** — Added `model_validator` to both `EntityCreate` and `EntityUpdate` schemas.
+
+- **Validator**: `@model_validator(mode='after')` checks that latitude and longitude are either both provided or both `None`
+- **Error**: Raises `ValueError('Either provide both latitude and longitude, or neither')` for partial coordinates
+- **Effect**: API returns 422 validation error when only one coordinate is provided
+- **Coverage**: Applies to both create (POST `/entities`, POST `/entities/bulk`) and update (PUT `/{source}/{source_id}`) operations
+
+**Files changed**: `src/dmo/models/schemas.py`
+**Tests added**: `tests/test_coordinate_validation.py` (14 tests: 4 unit tests for EntityCreate, 4 unit tests for EntityUpdate, 6 HTTP-level tests)
+
 ---
 
 ### 12. Open Status Cache TTL Mismatch

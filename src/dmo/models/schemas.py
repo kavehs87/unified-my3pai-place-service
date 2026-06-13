@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 T = TypeVar("T")
 
@@ -210,6 +210,14 @@ class EntityCreate(BaseModel):
     attributes: dict = {}
     is_active: bool = True
 
+    @model_validator(mode='after')
+    def validate_coordinates(self):
+        has_lat = self.latitude is not None
+        has_lon = self.longitude is not None
+        if has_lat != has_lon:
+            raise ValueError('Either provide both latitude and longitude, or neither')
+        return self
+
 
 class EntityUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -266,6 +274,14 @@ class EntityUpdate(BaseModel):
     reviews_count: int | None = None
     attributes: dict | None = None
     is_active: bool | None = None
+
+    @model_validator(mode='after')
+    def validate_coordinates(self):
+        has_lat = self.latitude is not None
+        has_lon = self.longitude is not None
+        if has_lat != has_lon:
+            raise ValueError('Either provide both latitude and longitude, or neither')
+        return self
 
 
 class MediaCreate(BaseModel):
