@@ -305,22 +305,35 @@ async def test_write_invalidates_cache(client: AsyncClient, session: AsyncSessio
 
 
 @pytest.mark.asyncio
-async def test_bulk_upsert_concurrent_no_conflict(client: AsyncClient, session: AsyncSession):
+async def test_bulk_upsert_concurrent_no_conflict(engine):
     """Two concurrent bulk upserts with overlapping source_ids should both succeed (serialized by advisory lock)."""
     import asyncio
 
-    batch_a = [_make_entity_data(source_id="concurrent-shared", name="Batch A")]
-    batch_b = [_make_entity_data(source_id="concurrent-shared", name="Batch B")]
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlmodel import text as sql_text
+    from sqlmodel.ext.asyncio.session import AsyncSession
 
-    async def post_bulk(data):
-        return await client.post("/entities/bulk", json=data, headers=WRITE_HEADERS)
+    from dmo.models.schemas import EntityCreate
+    from dmo.services.write import bulk_upsert
 
-    resp_a, resp_b = await asyncio.gather(post_bulk(batch_a), post_bulk(batch_b))
-    assert resp_a.status_code == 201
-    assert resp_b.status_code == 201
+    async_session = async_sessionmaker(engine, class_=AsyncSession)
 
-    # The second batch (serialized by lock) should have updated the entity
-    resp = await client.get("/search?q=Batch")
-    assert resp.status_code == 200
-    results = resp.json()
-    assert len(results["results"]) >= 1
+    batch_a = [EntityCreate(source="test", source_id="concurrent-shared", name="Batch A", place_type="poi", latitude=46.95, longitude=7.45, country="CH")]
+    batch_b = [EntityCreate(source="test", source_id="concurrent-shared", name="Batch B", place_type="poi", latitude=46.95, longitude=7.45, country="CH")]
+
+    async def upsert_a():
+        async with async_session() as s:
+            await s.exec(sql_text("DELETE FROM routes"))
+            await s.exec(sql_text("DELETE FROM classifications"))
+            await s.exec(sql_text("DELETE FROM media"))
+            await s.exec(sql_text("DELETE FROM entities"))
+            await s.commit()
+            return await bulk_upsert(s, batch_a)
+
+    async def upsert_b():
+        async with async_session() as s:
+            return await bulk_upsert(s, batch_b)
+
+    result_a, result_b = await asyncio.gather(upsert_a(), upsert_b())
+    assert len(result_a) == 1
+    assert len(result_b) == 1
