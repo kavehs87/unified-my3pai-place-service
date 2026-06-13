@@ -512,8 +512,8 @@ Setting `REPEATABLE_READ` globally would add MVCC overhead and potential seriali
 ## High-Severity Issues (Fix This Sprint)
 
 ### 6. XSS Vulnerability in HTML Description Converter
-**Severity:** 🟠 **HIGH**  
-**File:** `src/dmo/services/detail.py:28-40`  
+**Severity:** 🟠 **HIGH** ✅ **FIXED June 14**  
+**File:** `src/dmo/services/detail.py`  
 **Risk Level:** Client-side code execution, session hijacking
 
 #### Problem
@@ -556,44 +556,14 @@ Renders as:
 - **Credential harvesting** with fake login forms
 - **Malware distribution**
 
-#### How to Fix
+#### Resolution
 
-```python
-from html import escape
+**Two-layer defense added to `src/dmo/services/detail.py`:**
 
-def serialize_prosemirror(node: dict) -> str:
-    if node.get("type") == "link":
-        href = node.get("attrs", {}).get("href", "")
-        # ✅ Escape all user input
-        href = escape(href) if href else ""
-        text = "".join(serialize_prosemirror(child) for child in node.get("content", []))
-        return f'<a href="{href}">{text}</a>'
-    
-    elif node.get("type") == "image":
-        src = escape(node.get("attrs", {}).get("src", ""))
-        alt = escape(node.get("attrs", {}).get("alt", ""))
-        return f'<img src="{src}" alt="{alt}" />'
-    
-    # ... handle other node types ...
-```
+1. **ProseMirror converter** — `html.escape()` on all text content; `_safe_href()` blocks `javascript:`, `data:`, `vbscript:` protocols (case-insensitive, whitespace-tolerant)
+2. **HTML passthrough** — `bleach.clean()` with whitelist: `_ALLOWED_TAGS` (18 safe tags), `_ALLOWED_ATTRS` (only `href` on `<a>`)
 
-Or use a dedicated library:
-
-```python
-from markupsafe import escape
-from html.parser import HTMLParser
-
-# Use bleach for safe HTML
-import bleach
-
-ALLOWED_TAGS = ['a', 'b', 'i', 'p', 'br', 'strong', 'em', 'img']
-ALLOWED_ATTRS = {'a': ['href'], 'img': ['src', 'alt']}
-
-def safe_serialize_prosemirror(node: dict) -> str:
-    html = serialize_prosemirror(node)
-    # ✅ Clean any unsafe HTML
-    return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS)
-```
+Added `bleach[css]>=6.1.0,<7.0.0` dependency. 30 XSS tests in `tests/test_xss.py`.
 
 ---
 
@@ -1000,9 +970,9 @@ Add docstrings explaining function behavior, parameters, return values, and exce
 ### Critical Test Coverage Gaps
 
 1. **Security tests missing:**
-   - No test for empty API_KEY
-   - No SQL injection tests
-   - No XSS tests
+    - No test for empty API_KEY ✅ **FIXED** — 7 auth tests in `tests/test_auth.py`
+    - No SQL injection tests ✅ **FIXED** — 4 injection tests in `tests/test_write.py`
+    - No XSS tests ✅ **FIXED** — 30 XSS tests in `tests/test_xss.py`
 
 2. **Concurrency tests missing:**
    - No race condition tests for bulk_upsert
@@ -1073,7 +1043,7 @@ Before deploying to production, ensure:
 - [x] Cache invalidation failures are logged and handled
 - [x] Bulk upsert uses PostgreSQL UPSERT or advisory locks
 - [x] Transaction isolation is set to REPEATABLE_READ (resolved: READ_COMMITTED sufficient with advisory lock)
-- [ ] XSS in HTML converter is fixed (escape attributes)
+- [x] XSS in HTML converter is fixed (html.escape + bleach sanitization)
 - [ ] Cache stampede mitigation is implemented (locking or generation IDs)
 - [ ] Cursor validation returns 400 on malformed input
 - [ ] Query timeouts are set (5s default)
