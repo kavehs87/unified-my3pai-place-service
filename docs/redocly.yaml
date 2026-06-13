@@ -1,0 +1,5 @@
+openapi:
+  expandResponses: 200,201,404
+  generateCodeSamples:
+    languages:
+      - lang: curl
