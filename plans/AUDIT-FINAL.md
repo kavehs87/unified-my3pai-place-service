@@ -102,18 +102,13 @@ All 6 other GET endpoints properly validate cache hits through `model_validate()
 
 ### 3. Duplicate trigram index on `name`
 
-**Status: WASTEFUL BUT NOT A BUG**
+**Status: FIXED** ✅
 
-**Files:** `migrations/versions/001_initial_schema.py:95`, `migrations/versions/003_add_trigram_indexes.py:19`
+**Files:** `migrations/versions/003_add_trigram_indexes.py`
 
-- Migration 001 creates: `idx_entities_name_trgm ON entities USING gin (name gin_trgm_ops)`
-- Migration 003 creates: `idx_entity_name_trgm ON entities USING gin (name gin_trgm_ops)`
+Migration 003 now drops `idx_entities_name_trgm` (from migration 001) before creating `idx_entity_name_trgm`, eliminating the redundant index. Downgrade path restores the original index.
 
-These are **different index names** on the **same column**. After running all migrations, there are two redundant trigram indexes on `name`. Not harmful — PostgreSQL will use whichever is available — but wasteful.
-
-Additionally, the SQLModel definition at `database.py:112` only references `idx_entity_name_trgm` (the migration 003 name), not `idx_entities_name_trgm` (the migration 001 name). This means `SQLModel.metadata.create_all()` creates only one, while `alembic upgrade head` creates both — a subtle divergence between dev and prod schema.
-
-> **Verification: CONFIRMED.** Migration 001 line 95: `idx_entities_name_trgm`. Migration 003 line 19: `idx_entity_name_trgm`. Plural vs singular name creates two separate indexes.
+> **Fix Commit:** `git add && git commit` below
 
 ---
 

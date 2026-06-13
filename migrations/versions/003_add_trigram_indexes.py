@@ -16,6 +16,7 @@ depends_on: Union[str, None] = None
 
 
 def upgrade() -> None:
+    op.execute("DROP INDEX IF EXISTS idx_entities_name_trgm")
     op.execute("CREATE INDEX idx_entity_name_trgm ON entities USING gin (name gin_trgm_ops)")
     op.execute("CREATE INDEX idx_entity_summary_trgm ON entities USING gin (summary gin_trgm_ops)")
 
@@ -23,3 +24,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("idx_entity_summary_trgm")
     op.drop_index("idx_entity_name_trgm")
+    op.execute("CREATE INDEX idx_entities_name_trgm ON entities USING gin (name gin_trgm_ops)")
