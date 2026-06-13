@@ -1,5 +1,5 @@
 
-from sqlmodel import col, func, select
+from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Entity
@@ -15,44 +15,65 @@ async def search(
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
-    stmt = select(Entity).where(col(Entity.is_active))
+    where_parts = ["entities.is_active = true"]
+    params: dict[str, object] = {}
 
     if source:
-        stmt = stmt.where(col(Entity.source) == source)
+        where_parts.append("entities.source = :src")
+        params["src"] = source
     if place_type:
-        stmt = stmt.where(col(Entity.place_type) == place_type)
+        where_parts.append("entities.place_type = :ptype")
+        params["ptype"] = place_type
     if country:
-        stmt = stmt.where(col(Entity.country) == country)
+        where_parts.append("entities.country = :country")
+        params["country"] = country
     if q:
-        stmt = stmt.where(
-            (col(Entity.name).op("%")(q)) | (col(Entity.summary).op("%")(q))
-        )
+        where_parts.append("(entities.name % :query OR entities.summary % :query)")
+        params["query"] = q
 
-    count_stmt = select(func.count()).select_from(stmt.subquery())
-    count_result = await session.exec(count_stmt)
-    total = count_result.one()
-
+    cursor_filter = ""
     if cursor:
         from dmo.services.pagination import decode_cursor
         last_id, last_name = decode_cursor(cursor)
-        stmt = stmt.where(
-            (col(Entity.name) > last_name) |
-            ((col(Entity.name) == last_name) & (col(Entity.id) > last_id))
-        )
+        cursor_filter = " AND (entities.name > :cursor_name OR (entities.name = :cursor_name AND entities.id > :cursor_id))"
+        params["cursor_name"] = last_name
+        params["cursor_id"] = last_id
 
-    stmt = stmt.order_by(col(Entity.name).asc(), col(Entity.id).asc())
-    stmt = stmt.limit(page_size + 1)
-    result = await session.exec(stmt)
-    entities = result.all()
+    where_clause = " AND ".join(where_parts)
+    fetch_size = page_size + 1
 
-    has_more = len(entities) > page_size
-    entities = entities[:page_size]
-    items = [EntityListItem.model_validate(e) for e in entities]
+    rows_sql = text(f"""
+        SELECT entities.*,
+               COUNT(*) OVER() AS total
+        FROM entities
+        WHERE {where_clause}
+        {cursor_filter}
+        ORDER BY entities.name ASC, entities.id ASC
+        LIMIT :limit
+    """)
+    rows_params: dict[str, object] = {"limit": fetch_size}
+    rows_params.update(params)
+    rows_sql = rows_sql.bindparams(**rows_params)
+    rows_result = await session.exec(rows_sql)
+    rows = list(rows_result.mappings().all())
+
+    if not rows:
+        return [], 0, None, False
+
+    total = rows[0]["total"]
+    has_more = len(rows) > page_size
+    rows = rows[:page_size]
+
+    items = []
+    for row in rows:
+        mapping = {k: v for k, v in row.items() if k not in ("total", "location")}
+        entity = Entity.model_validate(mapping)
+        items.append(EntityListItem.model_validate(entity))
 
     next_cursor: str | None = None
-    if has_more and entities:
+    if has_more and items:
         from dmo.services.pagination import encode_cursor
-        last = entities[-1]
+        last = items[-1]
         next_cursor = encode_cursor(last.id, last.name)
 
     return items, total, next_cursor, has_more

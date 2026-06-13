@@ -191,6 +191,8 @@ The entire `EntityDetail` object is cached for 60 seconds to satisfy the open-st
 ## Medium Issues
 
 ### 11. Search re-executes the trigram filter for `COUNT`
+**Status: ✅ FIXED** → Rewrote to use `COUNT(*) OVER()` window function, single-pass query matching `spatial.py` pattern
+
 **File:** `src/dmo/services/search.py:31-33`
 
 A separate `SELECT count(*)` subquery reruns the full `WHERE`, including the expensive `%` similarity check. The spatial endpoints were moved to a single-pass `COUNT(*) OVER()`; search was not.
@@ -345,8 +347,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 0 | 11 |
+| Medium (P2) | 11 | 0 | 1 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **10** | **29** |
+| **Total** | **28** | **1** | **11** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
