@@ -156,18 +156,13 @@ The index `idx_entities_name_trgm` is created via `op.execute()` raw SQL but the
 
 ### 7. Docker Compose DB healthcheck hardcodes `postgres` user
 
+**Status: FIXED** ✅
+
 **File:** `docker-compose.prod.yml:35`
 
-```yaml
-healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U postgres"]
-```
+Changed `pg_isready -U postgres` to `pg_isready -U ${POSTGRES_USER:-postgres}` so it respects the `POSTGRES_USER` env var with fallback to `postgres`.
 
-If `POSTGRES_USER` is overridden to a non-`postgres` value, the healthcheck will fail because `pg_isready` tries to connect as `postgres`.
-
-**Fix:** `pg_isready -U ${POSTGRES_USER:-postgres}`
-
-> **Verification: CONFIRMED.** `docker-compose.prod.yml:35` hardcodes `-U postgres`.
+> **Fix Commit:** `git add && git commit` below
 
 ---
 
