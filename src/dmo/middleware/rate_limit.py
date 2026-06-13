@@ -24,7 +24,8 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
             pipeline = client.pipeline()
             pipeline.zremrangebyscore(key, 0, window_start)
-            pipeline.zadd(key, {str(now): str(now)})
+            member = f"{now}:{request.headers.get('x-request-id', id(request))}"
+            pipeline.zadd(key, {member: now})
             pipeline.zcard(key)
             pipeline.expire(key, settings.rate_limit_window_seconds + 1)
             results = await pipeline.execute()
