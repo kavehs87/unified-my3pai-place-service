@@ -268,6 +268,8 @@ Long-lived idle connections can go stale after network blips or DB-side timeouts
 ---
 
 ### 18. Logging volume and double-logging of 5xx
+**Status: ✅ FIXED** → 5xx logs only at ERROR, 4xx at WARNING, 2xx/3xx at INFO (no double-logging)
+
 **File:** `src/dmo/middleware/request_id.py:22-36`
 
 Every request is logged at `INFO` (high volume under load), and 5xx responses produce both an `info` and an `error` log line.
@@ -359,8 +361,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 7 | 11 |
+| Medium (P2) | 11 | 0 | 8 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **17** | **29** |
+| **Total** | **28** | **1** | **18** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

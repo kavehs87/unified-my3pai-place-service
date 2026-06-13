@@ -19,16 +19,25 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         duration = time.perf_counter() - start
 
         response.headers["X-Request-ID"] = request_id
-        logger.info(
-            "request.complete",
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-            duration_ms=round(duration * 1000, 2),
-        )
         if response.status_code >= 500:
             logger.error(
                 "request.error",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=round(duration * 1000, 2),
+            )
+        elif response.status_code >= 400:
+            logger.warning(
+                "request.client_error",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=round(duration * 1000, 2),
+            )
+        else:
+            logger.info(
+                "request.complete",
                 method=request.method,
                 path=request.url.path,
                 status_code=response.status_code,
