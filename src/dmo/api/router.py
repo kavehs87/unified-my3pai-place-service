@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Annotated
 
@@ -72,7 +73,7 @@ async def search_endpoint(
     items, total, next_cursor, has_more = await search_service(session, q, source, place_type, country, cursor=cursor, page_size=page_size)
 
     result = CursorPaginatedResponse[EntityListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
-    await cache_set("search", {"q": q, "source": source, "place_type": place_type, "country": country, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json")))
+    asyncio.create_task(cache_set("search", {"q": q, "source": source, "place_type": place_type, "country": country, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json"))))
     return result
 
 
@@ -94,7 +95,7 @@ async def nearby_endpoint(
     items, total, next_cursor, has_more = await nearby_service(session, lat, lon, radius_km, source, place_type, cursor=cursor, page_size=page_size)
 
     result = CursorPaginatedResponse[EntityListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
-    await cache_set("nearby", {"lat": lat, "lon": lon, "radius_km": radius_km, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json")), ttl=300)
+    asyncio.create_task(cache_set("nearby", {"lat": lat, "lon": lon, "radius_km": radius_km, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json")), ttl=300))
     return result
 
 
@@ -127,7 +128,7 @@ async def map_endpoint(
     items, total, next_cursor, has_more = await map_query_service(session, min_lon, min_lat, max_lon, max_lat, source, place_type, cursor=cursor, page_size=page_size)
 
     result = CursorPaginatedResponse[EntityListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
-    await cache_set("map", {"bbox": bbox, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json")))
+    asyncio.create_task(cache_set("map", {"bbox": bbox, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json"))))
     return result
 
 
@@ -141,7 +142,7 @@ async def categories_endpoint(
 
     categories = await list_categories_service(session)
 
-    await cache_set("categories", {}, json.dumps(categories))
+    asyncio.create_task(cache_set("categories", {}, json.dumps(categories)))
     return categories
 
 
@@ -161,7 +162,7 @@ async def classifications_endpoint(
     items, total, next_cursor, has_more = await list_classifications_service(session, entity_id, category, value_code, cursor=cursor, page_size=page_size)
 
     result = CursorPaginatedResponse[ClassificationListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
-    await cache_set("classifications", {"entity_id": entity_id, "category": category, "value_code": value_code, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json")))
+    asyncio.create_task(cache_set("classifications", {"entity_id": entity_id, "category": category, "value_code": value_code, "page_size": page_size, "cursor": cursor}, json.dumps(result.model_dump(mode="json"))))
     return result
 
 
@@ -179,7 +180,7 @@ async def detail_endpoint(
     if not detail:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    await cache_set("detail", {"source": source, "source_id": source_id}, json.dumps(detail.model_dump(mode="json")), ttl=1800)
+    asyncio.create_task(cache_set("detail", {"source": source, "source_id": source_id}, json.dumps(detail.model_dump(mode="json")), ttl=1800))
     return detail
 
 
