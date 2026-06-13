@@ -516,7 +516,8 @@ Setting `REPEATABLE_READ` globally would add MVCC overhead and potential seriali
 **File:** `src/dmo/services/detail.py`  
 **Risk Level:** Client-side code execution, session hijacking  
 **Resolved:** June 14, 2026 — html.escape() + bleach sanitization + 30 XSS tests  
-**Commit:** 0f82e0c
+**Commit:** 0f82e0c  
+**Audit doc updated:** 5bc7350
 
 #### Problem
 
