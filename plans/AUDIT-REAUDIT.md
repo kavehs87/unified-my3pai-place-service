@@ -77,6 +77,8 @@ But the `WHERE` clause at line 48 compares:
 ---
 
 ### 3. All write endpoints remain unauthenticated
+**Status: ✅ FIXED** | `router.py` → `verify_api_key` dependency on all 7 write endpoints, `config.py` → `api_key` setting
+
 **File:** `src/dmo/api/router.py:187-266`
 
 `POST /entities`, `POST /entities/bulk`, `PUT /{source}/{source_id}`, `DELETE /{source}/{source_id}`, `POST /media`, `DELETE /media/{media_id}`, and `POST /classifications` have no API key, OAuth, or internal-auth dependency.
@@ -327,10 +329,10 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
-| Critical (P0) | 4 | 0 | 2 | 4 |
+| Critical (P0) | 4 | 0 | 3 | 4 |
 | High-Impact (P1) | 5 | 0 | 0 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **2** | **29** |
+| **Total** | **28** | **1** | **3** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.

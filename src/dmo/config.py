@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     allowed_origins: str = "*"
     request_timeout_seconds: float = 30.0
+    api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

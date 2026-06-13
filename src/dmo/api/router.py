@@ -2,9 +2,10 @@ import asyncio
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from dmo.config import settings
 from dmo.db import get_session
 from dmo.models.schemas import (
     ClassificationCreate,
@@ -54,6 +55,11 @@ from dmo.services.write import (
 router = APIRouter()
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def verify_api_key(x_api_key: str = Header(default="")) -> None:
+    if settings.api_key and x_api_key != settings.api_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 @router.get("/search")
@@ -188,6 +194,7 @@ async def detail_endpoint(
 async def create_entity_endpoint(
     session: SessionDep,
     data: EntityCreate,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     try:
         item = await create_entity_service(session, data)
@@ -202,6 +209,7 @@ async def update_entity_endpoint(
     source: str,
     source_id: str,
     data: EntityUpdate,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     try:
         item = await update_entity_service(session, source, source_id, data)
@@ -214,6 +222,7 @@ async def update_entity_endpoint(
 async def delete_media_endpoint(
     session: SessionDep,
     media_id: int,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     deleted = await delete_media_service(session, media_id)
     if not deleted:
@@ -226,6 +235,7 @@ async def delete_entity_endpoint(
     session: SessionDep,
     source: str,
     source_id: str,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     deleted = await delete_entity_service(session, source, source_id)
     if not deleted:
@@ -237,6 +247,7 @@ async def delete_entity_endpoint(
 async def bulk_upsert_endpoint(
     session: SessionDep,
     data: list[EntityCreate],
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     items = await bulk_upsert_service(session, data)
     return items
@@ -246,6 +257,7 @@ async def bulk_upsert_endpoint(
 async def create_media_endpoint(
     session: SessionDep,
     data: MediaCreate,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     try:
         result = await create_media_service(session, data)
@@ -258,6 +270,7 @@ async def create_media_endpoint(
 async def create_classification_endpoint(
     session: SessionDep,
     data: ClassificationCreate,
+    _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     try:
         result = await create_classification_service(session, data)
