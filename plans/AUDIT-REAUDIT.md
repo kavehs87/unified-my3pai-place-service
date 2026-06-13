@@ -202,6 +202,8 @@ A separate `SELECT count(*)` subquery reruns the full `WHERE`, including the exp
 ---
 
 ### 12. Description format transformation is not implemented
+**Status: ✅ FIXED** → Added `transform_description()` in `detail.py` with ProseMirror→HTML serializer; applied in `get_detail`
+
 **Files:** `src/dmo/services/detail.py:31`, `src/dmo/models/schemas.py:92-154`
 
 `AGENTS.md` requires transforming `description` based on `description_format` (e.g., ProseMirror to HTML). `get_detail` returns the raw `description` unchanged.
@@ -347,8 +349,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 1 | 11 |
+| Medium (P2) | 11 | 0 | 2 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **11** | **29** |
+| **Total** | **28** | **1** | **12** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
