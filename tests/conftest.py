@@ -43,9 +43,6 @@ async def engine():
     eng = create_async_engine(TEST_DB_URL, echo=False)
     async with eng.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
-        # Add is_active columns if they don't exist (for existing test DB)
-        await conn.execute(text("ALTER TABLE media ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
-        await conn.execute(text("ALTER TABLE classifications ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
     yield eng
     await eng.dispose()
 

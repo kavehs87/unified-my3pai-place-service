@@ -168,16 +168,13 @@ Changed `pg_isready -U postgres` to `pg_isready -U ${POSTGRES_USER:-postgres}` s
 
 ### 8. `conftest.py` uses ALTER TABLE hacks to compensate for migration gap
 
-**File:** `tests/conftest.py:47-48`
+**Status: FIXED** ✅
 
-```python
-await conn.execute(text("ALTER TABLE media ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
-await conn.execute(text("ALTER TABLE classifications ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE"))
-```
+**File:** `tests/conftest.py`
 
-These are workarounds for Critical Bug #1. Once a proper migration exists, these lines should be removed. They signal that the test setup and the Alembic migration chain have diverged.
+Removed `ALTER TABLE` hacks for `is_active` columns on `media` and `classifications` tables. These are no longer needed since the SQLModel definitions include `is_active` and `SQLModel.metadata.create_all` creates them.
 
-> **Verification: CONFIRMED.** These lines exist because the test DB might have been created from an older migration that lacked `is_active` on these tables. They should be removed once migration 006 is in place.
+> **Fix Commit:** `git add && git commit` below
 
 ---
 
