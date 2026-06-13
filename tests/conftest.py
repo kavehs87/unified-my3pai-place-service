@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -6,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.main import app
 
-TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
+TEST_DB_URL = os.environ.get("TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo")
 
 
 @pytest.fixture(autouse=True)

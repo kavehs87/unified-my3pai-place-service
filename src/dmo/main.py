@@ -84,6 +84,8 @@ register_exception_handlers(app)
 
 @app.middleware("http")
 async def timeout_middleware(request: Request, call_next):
+    if request.url.path in ("/health", "/metrics", "/docs", "/redoc", "/openapi.json"):
+        return await call_next(request)
     try:
         return await asyncio.wait_for(
             call_next(request), timeout=settings.request_timeout_seconds

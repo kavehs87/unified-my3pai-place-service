@@ -153,15 +153,6 @@ class EntityDetail(BaseModel):
     classifications: list[ClassificationItem] = []
 
 
-class PaginatedResponse[T](BaseModel):
-    results: list[T]
-    total: int
-    page: int
-    page_size: int
-    next_cursor: str | None = None
-    has_more: bool = False
-
-
 class EntityCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -314,7 +305,3 @@ class MediaCreateResponse(BaseModel):
 class ClassificationCreateResponse(BaseModel):
     id: int
     entity_id: str
-
-
-class BulkEntityUpsert(BaseModel):
-    entities: list[EntityCreate]

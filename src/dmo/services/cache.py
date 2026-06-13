@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 
@@ -7,18 +8,21 @@ from dmo.config import settings
 from dmo.metrics import CACHE_HITS, CACHE_MISSES
 
 _cache: redis.Redis | None = None
+_cache_lock = asyncio.Lock()
 
 
 async def get_cache() -> redis.Redis:
     global _cache
     if _cache is None:
-        _cache = redis.from_url(settings.redis_url, decode_responses=True)
+        async with _cache_lock:
+            if _cache is None:
+                _cache = redis.from_url(settings.redis_url, decode_responses=True)
     return _cache
 
 
 def _make_key(endpoint: str, params: dict[str, str | int | float | None]) -> str:
     sorted_params = json.dumps(params, sort_keys=True)
-    param_hash = hashlib.md5(sorted_params.encode()).hexdigest()
+    param_hash = hashlib.sha256(sorted_params.encode()).hexdigest()
     return f"dmo:{endpoint}:{param_hash}"
 
 
