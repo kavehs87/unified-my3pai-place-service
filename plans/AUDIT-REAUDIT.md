@@ -163,6 +163,8 @@ If the request contains only `latitude` or only `longitude`, both keys are poppe
 ---
 
 ### 9. Fire-and-forget cache writes hide failures
+**Status: ✅ FIXED** | `cache.py` → structlog error logging on Redis failures, `cache_set_async` wrapper with task done callback
+
 **Files:** `src/dmo/api/router.py:76, 98, ...` + `src/dmo/services/cache.py:43-54`
 
 Cache writes are now scheduled with `asyncio.create_task` (good), but `cache_set` swallows all Redis errors and `create_task` exceptions are never awaited or logged.
@@ -340,9 +342,9 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
-| High-Impact (P1) | 5 | 0 | 4 | 6 |
+| High-Impact (P1) | 5 | 0 | 5 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **8** | **29** |
+| **Total** | **28** | **1** | **9** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
