@@ -512,11 +512,9 @@ Setting `REPEATABLE_READ` globally would add MVCC overhead and potential seriali
 ## High-Severity Issues (Fix This Sprint)
 
 ### 6. XSS Vulnerability in HTML Description Converter
-**Severity:** 🟠 **HIGH** ✅ **FIXED**  
-**File:** `src/dmo/services/detail.py`  
-**Risk Level:** Client-side code execution, session hijacking  
-**Resolved:** June 14 — html.escape() + bleach sanitization + 30 XSS tests  
-**Fix commit:** 0f82e0c
+**Severity:** 🟠 **HIGH**  
+**File:** `src/dmo/services/detail.py:28-40`  
+**Risk Level:** Client-side code execution, session hijacking
 
 #### Problem
 
@@ -558,14 +556,44 @@ Renders as:
 - **Credential harvesting** with fake login forms
 - **Malware distribution**
 
-#### Resolution
+#### How to Fix
 
-**Two-layer defense added to `src/dmo/services/detail.py`:**
+```python
+from html import escape
 
-1. **ProseMirror converter** — `html.escape()` on all text content; `_safe_href()` blocks `javascript:`, `data:`, `vbscript:` protocols (case-insensitive, whitespace-tolerant)
-2. **HTML passthrough** — `bleach.clean()` with whitelist: `_ALLOWED_TAGS` (18 safe tags), `_ALLOWED_ATTRS` (only `href` on `<a>`)
+def serialize_prosemirror(node: dict) -> str:
+    if node.get("type") == "link":
+        href = node.get("attrs", {}).get("href", "")
+        # ✅ Escape all user input
+        href = escape(href) if href else ""
+        text = "".join(serialize_prosemirror(child) for child in node.get("content", []))
+        return f'<a href="{href}">{text}</a>'
+    
+    elif node.get("type") == "image":
+        src = escape(node.get("attrs", {}).get("src", ""))
+        alt = escape(node.get("attrs", {}).get("alt", ""))
+        return f'<img src="{src}" alt="{alt}" />'
+    
+    # ... handle other node types ...
+```
 
-Added `bleach[css]>=6.1.0,<7.0.0` dependency. 30 XSS tests in `tests/test_xss.py`.
+Or use a dedicated library:
+
+```python
+from markupsafe import escape
+from html.parser import HTMLParser
+
+# Use bleach for safe HTML
+import bleach
+
+ALLOWED_TAGS = ['a', 'b', 'i', 'p', 'br', 'strong', 'em', 'img']
+ALLOWED_ATTRS = {'a': ['href'], 'img': ['src', 'alt']}
+
+def safe_serialize_prosemirror(node: dict) -> str:
+    html = serialize_prosemirror(node)
+    # ✅ Clean any unsafe HTML
+    return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS)
+```
 
 ---
 
@@ -573,8 +601,6 @@ Added `bleach[css]>=6.1.0,<7.0.0` dependency. 30 XSS tests in `tests/test_xss.py
 **Severity:** 🟠 **HIGH**  
 **File:** `src/dmo/api/router.py:81-88` (and similar in all GET endpoints)  
 **Risk Level:** Database overload, service degradation
-
-**Resolved:** June 14 — Redis SET NX lock per cache key + 7 stampede tests
 
 #### Problem
 
@@ -974,9 +1000,9 @@ Add docstrings explaining function behavior, parameters, return values, and exce
 ### Critical Test Coverage Gaps
 
 1. **Security tests missing:**
-    - No test for empty API_KEY ✅ **FIXED** — 7 auth tests in `tests/test_auth.py`
-    - No SQL injection tests ✅ **FIXED** — 4 injection tests in `tests/test_write.py`
-    - No XSS tests ✅ **FIXED** — 30 XSS tests in `tests/test_xss.py`
+   - No test for empty API_KEY
+   - No SQL injection tests
+   - No XSS tests
 
 2. **Concurrency tests missing:**
    - No race condition tests for bulk_upsert
@@ -1042,13 +1068,13 @@ async def test_cursor_pagination_second_page():
 
 Before deploying to production, ensure:
 
-- [x] SQL injection in `_set_locations_batch` is fixed (parameterized queries)
-- [x] API key validation enforces non-empty key in production
+- [ ] SQL injection in `_set_locations_batch` is fixed (parameterized queries)
+- [ ] API key validation enforces non-empty key in production
 - [x] Cache invalidation failures are logged and handled
 - [x] Bulk upsert uses PostgreSQL UPSERT or advisory locks
 - [x] Transaction isolation is set to REPEATABLE_READ (resolved: READ_COMMITTED sufficient with advisory lock)
-- [x] XSS in HTML converter is fixed (html.escape + bleach sanitization)
-- [x] Cache stampede mitigation is implemented (Redis SET NX lock per cache key)
+- [ ] XSS in HTML converter is fixed (escape attributes)
+- [ ] Cache stampede mitigation is implemented (locking or generation IDs)
 - [ ] Cursor validation returns 400 on malformed input
 - [ ] Query timeouts are set (5s default)
 - [ ] All security tests pass

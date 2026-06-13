@@ -8,11 +8,16 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.main import app
 
+# Save originals before any patching
+from dmo.services.cache import cache_get as _orig_cache_get
+from dmo.services.cache import cache_get_or_set as _orig_cache_get_or_set
+from dmo.services.cache import cache_set as _orig_cache_set
+
 TEST_DB_URL = os.environ.get("TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo")
 
 
 @pytest.fixture(autouse=True)
-def _disable_cache():
+def _disable_cache(request):
     """Disable caching during tests."""
     import dmo.api.router as router_module
     import dmo.services.cache as cache_module
@@ -23,19 +28,32 @@ def _disable_cache():
     async def _no_op_set(*args, **kwargs):
         pass
 
+    async def _no_op_get_or_set(*args, fetch_fn=None, **kwargs):
+        if fetch_fn:
+            return await fetch_fn()
+        return None
+
+    # Don't patch cache_get_or_set for stampede tests
+    is_stampede = "test_cache_stampede" in (request.node.module.__name__ if request.node.module else "")
+
     cache_module.cache_get = _no_op_get
     cache_module.cache_set = _no_op_set
+    if not is_stampede:
+        cache_module.cache_get_or_set = _no_op_get_or_set
     router_module.cache_get = _no_op_get
     router_module.cache_set = _no_op_set
+    if not is_stampede:
+        router_module.cache_get_or_set = _no_op_get_or_set
 
     yield
 
-    # Restore original functions (not needed for tests, but good practice)
-    from dmo.services.cache import cache_get, cache_set
-    cache_module.cache_get = cache_get
-    cache_module.cache_set = cache_set
-    router_module.cache_get = cache_get
-    router_module.cache_set = cache_set
+    # Restore originals
+    cache_module.cache_get = _orig_cache_get
+    cache_module.cache_set = _orig_cache_set
+    cache_module.cache_get_or_set = _orig_cache_get_or_set
+    router_module.cache_get = _orig_cache_get
+    router_module.cache_set = _orig_cache_set
+    router_module.cache_get_or_set = _orig_cache_get_or_set
 
 
 @pytest.fixture(scope="session")
