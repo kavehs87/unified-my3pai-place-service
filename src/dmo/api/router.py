@@ -17,7 +17,7 @@ from dmo.models.schemas import (
     EntityUpdate,
     MediaCreate,
 )
-from dmo.services.cache import cache_get, cache_get_or_set, cache_set_async
+from dmo.services.cache import cache_get_or_set, cache_set_async
 from dmo.services.classifications import (
     list_categories as list_categories_service,
 )
@@ -213,7 +213,11 @@ async def detail_endpoint(
         detail = await get_detail_service(session, source, source_id)
         if not detail:
             raise HTTPException(status_code=404, detail="Entity not found")
-        return json.dumps(detail.model_dump(mode="json"))
+        detail_dict = detail.model_dump(mode="json")
+        detail_dict["is_open"] = None
+        detail_dict["opens_at"] = None
+        detail_dict["closes_at"] = None
+        return json.dumps(detail_dict)
 
     cached = await cache_get_or_set("detail", detail_params, fetch_fn=_fetch_detail, ttl=1800)
     if cached:
@@ -223,14 +227,18 @@ async def detail_endpoint(
         await cache_set_async("detail", detail_params, detail_json, ttl=1800)
         detail = EntityDetail.model_validate(json.loads(detail_json))
 
-    open_cached = await cache_get("open_status", detail_params)
-    if open_cached:
-        from dmo.models.schemas import OpenStatus
-        open_status = OpenStatus.model_validate(json.loads(open_cached))
-    else:
+    async def _fetch_open_status() -> str:
         open_status = await get_open_status_service(session, source, source_id)
-        if open_status:
-            await cache_set_async("open_status", detail_params, json.dumps(open_status.model_dump(mode="json")), ttl=60)
+        if not open_status:
+            return "null"
+        return json.dumps(open_status.model_dump(mode="json"))
+
+    from dmo.models.schemas import OpenStatus
+
+    open_cached = await cache_get_or_set("open_status", detail_params, fetch_fn=_fetch_open_status, ttl=60)
+    open_status: OpenStatus | None = None
+    if open_cached and open_cached != "null":
+        open_status = OpenStatus.model_validate(json.loads(open_cached))
 
     if open_status:
         detail.is_open = open_status.is_open
