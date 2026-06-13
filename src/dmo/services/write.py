@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -44,14 +45,6 @@ async def create_entity(
     session: AsyncSession,
     data: EntityCreate,
 ) -> EntityListItem:
-    stmt = select(Entity).where(
-        col(Entity.source) == data.source,
-        col(Entity.source_id) == data.source_id,
-    )
-    existing = (await session.exec(stmt)).first()
-    if existing:
-        raise EntityError(f"Entity {data.source}/{data.source_id} already exists")
-
     entity = Entity(
         source=data.source,
         source_id=data.source_id,
@@ -110,7 +103,12 @@ async def create_entity(
     )
 
     session.add(entity)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise EntityError(f"Entity {data.source}/{data.source_id} already exists")
+
     await session.refresh(entity)
     entity_id = entity.id
 
