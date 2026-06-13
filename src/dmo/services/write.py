@@ -220,11 +220,10 @@ async def bulk_upsert(
     new_entities: list[Entity] = []
     new_entity_loc_updates: list[tuple[Entity, float, float]] = []
     result_ids: list[UUID | None] = []
-    order: list[tuple[str, str]] = []
+    new_entity_indices: list[int] = []
 
-    for data in entities:
+    for i, data in enumerate(entities):
         key = (data.source, data.source_id)
-        order.append(key)
 
         if key in existing_map:
             existing = existing_map[key]
@@ -311,7 +310,8 @@ async def bulk_upsert(
             )
 
             new_entities.append(entity)
-            result_ids.append(None)  # placeholder, resolved after flush
+            new_entity_indices.append(i)
+            result_ids.append(None)
 
             if data.latitude is not None and data.longitude is not None:
                 new_entity_loc_updates.append((entity, data.longitude, data.latitude))
@@ -319,16 +319,15 @@ async def bulk_upsert(
     if new_entities:
         session.add_all(new_entities)
 
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        raise EntityError("Bulk upsert failed: duplicate key conflict")
 
     # Resolve placeholder IDs for new entities after flush
-    if new_entities:
-        for i, entity in enumerate(new_entities):
-            # Find the placeholder index in result_ids
-            for j, rid in enumerate(result_ids):
-                if rid is None:
-                    result_ids[j] = entity.id
-                    break
+    for idx, entity in zip(new_entity_indices, new_entities):
+        result_ids[idx] = entity.id
 
     # Resolve location updates for new entities
     for entity, lon, lat in new_entity_loc_updates:

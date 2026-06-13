@@ -135,6 +135,8 @@ return response_model.model_validate(json.loads(cached))
 ---
 
 ### 7. Bulk upsert is not batched and has fragile ID resolution
+**Status: ✅ FIXED** | `write.py` → `zip(new_entity_indices, new_entities)` for O(1) ID resolution, `IntegrityError` handling with rollback
+
 **File:** `src/dmo/services/write.py:196-344`
 
 The function now runs in a single transaction (good), but it still emits one `UPDATE`/entity and one `UPDATE`/`_set_location`/entity, and resolves new-row IDs with nested loops over `result_ids`. It also does not catch `IntegrityError` from concurrent inserts, so a duplicate key can abort the entire batch.
@@ -336,9 +338,9 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
-| High-Impact (P1) | 5 | 0 | 2 | 6 |
+| High-Impact (P1) | 5 | 0 | 3 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **6** | **29** |
+| **Total** | **28** | **1** | **7** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
