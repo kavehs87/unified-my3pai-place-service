@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -27,4 +28,7 @@ async def health(session: AsyncSession = Depends(get_session)):
         components["redis"] = "down"
 
     status = "ok" if all(v == "up" for v in components.values()) else "degraded"
-    return {"status": status, "components": components}
+    return JSONResponse(
+        status_code=200 if status == "ok" else 503,
+        content={"status": status, "components": components},
+    )

@@ -213,6 +213,8 @@ A separate `SELECT count(*)` subquery reruns the full `WHERE`, including the exp
 ---
 
 ### 13. `/health` returns HTTP 200 even when dependencies are down
+**Status: ✅ FIXED** → Returns 503 when degraded, 200 when ok
+
 **File:** `src/dmo/api/health.py:29-30`
 
 The JSON body says `"status": "degraded"`, but the HTTP status is always `200`. Docker/k8s healthchecks that only look at the status code will treat a pod with no database as healthy.
@@ -349,8 +351,8 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 |---|---|---|---|---|
 | Critical (P0) | 4 | 0 | 4 | 4 |
 | High-Impact (P1) | 5 | 0 | 6 | 6 |
-| Medium (P2) | 11 | 0 | 2 | 11 |
+| Medium (P2) | 11 | 0 | 3 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **12** | **29** |
+| **Total** | **28** | **1** | **13** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
