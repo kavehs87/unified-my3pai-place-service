@@ -22,7 +22,7 @@ The project has received three prior audits with claimed improvements, but **cri
 5. ~~**Missing transaction isolation** — No REPEATABLE_READ guard against phantom reads~~ ✅ **RESOLVED June 14**
 6. ~~**XSS in HTML description converter** — Unescaped user input in href/src attributes~~ ✅ **FIXED June 14**
 7. ~~**Cache stampede on cache miss** — Concurrent requests all hit database simultaneously~~ ✅ **FIXED June 14**
-8. **Cursor validation missing** — Malformed cursors cause 500 errors (DoS vector)
+8. ~~**Cursor validation missing** — Malformed cursors cause 500 errors (DoS vector)~~ ✅ **FIXED June 14**
 
 ### Time to Production
 
@@ -718,9 +718,10 @@ Applied to all 6 GET endpoints (`/search`, `/nearby`, `/map`, `/categories`, `/c
 ---
 
 ### 8. Malformed Cursor DoS Vulnerability
-**Severity:** 🟠 **HIGH**  
-**Files:** `src/dmo/services/search.py:34-40`, `src/dmo/services/spatial.py:31-38`  
+**Severity:** 🟠 **HIGH** ✅ **FIXED**
+**Files:** `src/dmo/services/search.py:34-40`, `src/dmo/services/spatial.py:31-38`
 **Risk Level:** Service crashes, 500 errors
+**Resolved:** June 14, 2026
 
 #### Problem
 
@@ -795,6 +796,18 @@ async def search_endpoint(
     
     # ... rest of query ...
 ```
+
+#### Resolution
+
+Fixed at the root in `src/dmo/services/pagination.py` — `decode_cursor` now validates all input in a single try/except:
+
+1. **Base64 decode + JSON parse + key extraction** wrapped in `try/except (ValueError, KeyError, TypeError)` → raises `AppError("Invalid cursor format", "InvalidCursor", 400)`
+2. **`data["sort"]` moved inside try block** — previously only `data["id"]` was protected, `data["sort"]` could leak as unhandled `KeyError`
+3. **All 4 call sites benefit automatically** — `search.py`, `spatial.py` (nearby + map), `classifications.py`
+
+Additionally, `classifications.py` sort_key nested JSON parsing (`json.loads(sort_key)`, `sort_dict["c"]`, `sort_dict["v"]`) wrapped in its own try/except raising the same `AppError`.
+
+7 tests in `tests/test_errors.py` cover invalid base64, invalid JSON, missing `id`, missing `sort`, nearby/map/classifications endpoints, and classifications nested sort_key. All return 400 with `code: "InvalidCursor"`.
 
 ---
 
@@ -1100,7 +1113,7 @@ Before deploying to production, ensure:
 - [x] Transaction isolation is set to REPEATABLE_READ (resolved: READ_COMMITTED sufficient with advisory lock)
 - [x] XSS in HTML converter is fixed (html.escape + bleach sanitization)
 - [x] Cache stampede mitigation is implemented (Redis SET NX lock per cache key)
-- [ ] Cursor validation returns 400 on malformed input
+- [x] Cursor validation returns 400 on malformed input (AppError in decode_cursor)
 - [ ] Query timeouts are set (5s default)
 - [ ] All security tests pass
 - [ ] All concurrency tests pass

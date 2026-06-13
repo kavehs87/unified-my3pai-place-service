@@ -35,11 +35,15 @@ async def list_classifications(
     )
 
     if cursor:
+        from dmo.exceptions import AppError
         from dmo.services.pagination import decode_cursor
         last_id, sort_key = decode_cursor(cursor)
-        sort_dict = json.loads(str(sort_key))
-        cat = sort_dict["c"]
-        val = sort_dict["v"]
+        try:
+            sort_dict = json.loads(str(sort_key))
+            cat = sort_dict["c"]
+            val = sort_dict["v"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            raise AppError("Invalid cursor format", "InvalidCursor", 400)
         stmt = stmt.where(
             (col(Classification.category) > cat) |
             ((col(Classification.category) == cat) & (col(Classification.value_code) > val)) |

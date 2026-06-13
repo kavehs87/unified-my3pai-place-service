@@ -213,3 +213,75 @@ async def test_error_response_has_all_required_fields(client: AsyncClient):
     assert isinstance(data["message"], str)
     assert isinstance(data["code"], int)
     assert isinstance(data["request_id"], str)
+
+
+@pytest.mark.asyncio
+async def test_400_invalid_base64_cursor(client: AsyncClient):
+    resp = await client.get("/search?q=hotel&cursor=invalid!!!")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
+    assert "request_id" in data
+
+
+@pytest.mark.asyncio
+async def test_400_invalid_json_cursor(client: AsyncClient):
+    import base64
+    invalid_json = base64.urlsafe_b64encode(b"not-json").decode()
+    resp = await client.get(f"/search?q=hotel&cursor={invalid_json}")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
+
+
+@pytest.mark.asyncio
+async def test_400_cursor_missing_id_key(client: AsyncClient):
+    import base64
+    missing_id = base64.urlsafe_b64encode(b'{"sort": "value"}').decode()
+    resp = await client.get(f"/search?q=hotel&cursor={missing_id}")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
+
+
+@pytest.mark.asyncio
+async def test_400_cursor_missing_sort_key(client: AsyncClient):
+    import base64
+    missing_sort = base64.urlsafe_b64encode(b'{"id": "abc123"}').decode()
+    resp = await client.get(f"/search?q=hotel&cursor={missing_sort}")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
+
+
+@pytest.mark.asyncio
+async def test_400_nearby_invalid_cursor(client: AsyncClient):
+    resp = await client.get("/nearby?lat=0&lon=0&radius_km=10&cursor=invalid!!!")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
+
+
+@pytest.mark.asyncio
+async def test_400_map_invalid_cursor(client: AsyncClient):
+    resp = await client.get("/map?bbox=0,0,1,1&cursor=invalid!!!")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
+
+
+@pytest.mark.asyncio
+async def test_400_classifications_invalid_nested_cursor(client: AsyncClient):
+    import base64
+    bad_sort = base64.urlsafe_b64encode(b'{"id": "abc123", "sort": "not-json"}').decode()
+    resp = await client.get(f"/classifications?cursor={bad_sort}")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"] == "BadRequest"
+    assert data["code"] == "InvalidCursor"
