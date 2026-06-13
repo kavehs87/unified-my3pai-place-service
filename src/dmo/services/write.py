@@ -32,7 +32,6 @@ async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat:
             lat=lat, lon=lon, eid=entity_id
         )
     )
-    await session.commit()
 
 
 async def _fetch_entity(session: AsyncSession, entity_id: UUID) -> Entity:
@@ -117,6 +116,7 @@ async def create_entity(
 
     if data.latitude is not None and data.longitude is not None:
         await _set_location(session, entity_id, data.longitude, data.latitude)
+        await session.commit()
 
     fresh = await _fetch_entity(session, entity_id)
     await invalidate_all_caches()
@@ -168,6 +168,7 @@ async def update_entity(
 
     if need_location_update and new_lat is not None and new_lon is not None:
         await _set_location(session, entity_id, new_lon, new_lat)
+        await session.commit()
 
     fresh = await _fetch_entity(session, entity_id)
     await invalidate_all_caches()
@@ -226,7 +227,7 @@ async def bulk_upsert(
                 setattr(existing, field, value)
 
             existing_id = existing.id
-            await session.commit()
+            await session.flush()
 
             if need_location_update and new_lat is not None and new_lon is not None:
                 await _set_location(session, existing_id, new_lon, new_lat)
@@ -292,8 +293,7 @@ async def bulk_upsert(
             )
 
             session.add(entity)
-            await session.commit()
-            await session.refresh(entity)
+            await session.flush()
             entity_id = entity.id
 
             if data.latitude is not None and data.longitude is not None:
@@ -302,6 +302,7 @@ async def bulk_upsert(
             fresh = await _fetch_entity(session, entity_id)
             results.append(EntityListItem.model_validate(fresh))
 
+    await session.commit()
     await invalidate_all_caches()
     return results
 

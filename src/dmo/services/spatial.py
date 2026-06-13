@@ -29,6 +29,15 @@ async def nearby(
         where_parts.append("entities.place_type = :ptype")
         params["ptype"] = place_type
 
+    cursor_filter = ""
+    if cursor:
+        from dmo.services.pagination import decode_cursor
+        last_id, last_distance = decode_cursor(cursor)
+        dist_expr = "(ST_Distance(location, ST_MakePoint(:lon, :lat, 4326)::geography) / 1000.0)"
+        cursor_filter = f" AND ({dist_expr} > :cursor_distance OR ({dist_expr} = :cursor_distance AND id > :cursor_id))"
+        params["cursor_distance"] = last_distance
+        params["cursor_id"] = last_id
+
     where_clause = " AND ".join(where_parts)
 
     count_sql = text(f"""
@@ -49,7 +58,8 @@ async def nearby(
         FROM entities
         WHERE {where_clause}
           AND ST_DWithin(location, ST_MakePoint(:lon, :lat, 4326)::geography, :radius_m)
-        ORDER BY distance_km ASC
+        {cursor_filter}
+        ORDER BY distance_km ASC, id ASC
         LIMIT :limit
     """)
     ids_params: dict[str, object] = {
@@ -72,9 +82,10 @@ async def nearby(
     entities_result = await session.exec(entities_stmt)
     entities = entities_result.all()
 
+    entity_map = {e.id: e for e in entities}
     items = []
     for eid, distance in id_distance_pairs:
-        entity = next((e for e in entities if e.id == eid), None)
+        entity = entity_map.get(eid)
         if entity:
             item = EntityListItem.model_validate(entity)
             item.distance_km = round(distance, 2) if distance else None
@@ -111,6 +122,13 @@ async def map_query(
         where_parts.append("entities.place_type = :ptype")
         params["ptype"] = place_type
 
+    cursor_filter = ""
+    if cursor:
+        from dmo.services.pagination import decode_cursor
+        last_id, _ = decode_cursor(cursor)
+        cursor_filter = " AND id > :cursor_id"
+        params["cursor_id"] = last_id
+
     where_clause = " AND ".join(where_parts)
 
     count_sql = text(f"""
@@ -133,6 +151,8 @@ async def map_query(
         SELECT id FROM entities
         WHERE {where_clause}
           AND ST_Intersects(location, ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)::geography)
+        {cursor_filter}
+        ORDER BY id ASC
         LIMIT :limit
     """)
     ids_params: dict[str, object] = {
@@ -162,6 +182,6 @@ async def map_query(
     if has_more and items:
         from dmo.services.pagination import encode_cursor
         last = items[-1]
-        next_cursor = encode_cursor(last.id, last.name)
+        next_cursor = encode_cursor(last.id, last.id)
 
     return items, total, next_cursor, has_more
