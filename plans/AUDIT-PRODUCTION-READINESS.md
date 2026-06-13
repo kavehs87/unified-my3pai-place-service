@@ -514,7 +514,8 @@ Setting `REPEATABLE_READ` globally would add MVCC overhead and potential seriali
 ### 6. XSS Vulnerability in HTML Description Converter
 **Severity:** 🟠 **HIGH** ✅ **FIXED June 14**  
 **File:** `src/dmo/services/detail.py`  
-**Risk Level:** Client-side code execution, session hijacking
+**Risk Level:** Client-side code execution, session hijacking  
+**Resolved:** June 14, 2026
 
 #### Problem
 
