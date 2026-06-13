@@ -574,6 +574,8 @@ Added `bleach[css]>=6.1.0,<7.0.0` dependency. 30 XSS tests in `tests/test_xss.py
 **File:** `src/dmo/api/router.py:81-88` (and similar in all GET endpoints)  
 **Risk Level:** Database overload, service degradation
 
+**Resolved:** June 14 — Redis SET NX lock per cache key + 7 stampede tests
+
 #### Problem
 
 ```python
@@ -1040,13 +1042,13 @@ async def test_cursor_pagination_second_page():
 
 Before deploying to production, ensure:
 
-- [ ] SQL injection in `_set_locations_batch` is fixed (parameterized queries)
-- [ ] API key validation enforces non-empty key in production
+- [x] SQL injection in `_set_locations_batch` is fixed (parameterized queries)
+- [x] API key validation enforces non-empty key in production
 - [x] Cache invalidation failures are logged and handled
 - [x] Bulk upsert uses PostgreSQL UPSERT or advisory locks
 - [x] Transaction isolation is set to REPEATABLE_READ (resolved: READ_COMMITTED sufficient with advisory lock)
 - [x] XSS in HTML converter is fixed (html.escape + bleach sanitization)
-- [ ] Cache stampede mitigation is implemented (locking or generation IDs)
+- [x] Cache stampede mitigation is implemented (Redis SET NX lock per cache key)
 - [ ] Cursor validation returns 400 on malformed input
 - [ ] Query timeouts are set (5s default)
 - [ ] All security tests pass
