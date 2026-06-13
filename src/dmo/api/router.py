@@ -6,7 +6,7 @@ from pydantic import TypeAdapter
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.config import settings
-from dmo.db import get_session
+from dmo.db import get_session, get_write_session
 from dmo.models.schemas import (
     ClassificationCreate,
     ClassificationListItem,
@@ -60,6 +60,7 @@ from dmo.services.write import (
 router = APIRouter()
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+WriteSessionDep = Annotated[AsyncSession, Depends(get_write_session)]
 
 
 def verify_api_key(x_api_key: str = Header(default="")) -> None:
@@ -240,7 +241,7 @@ async def detail_endpoint(
 
 @router.post("/entities", status_code=201)
 async def create_entity_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     data: EntityCreate,
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
@@ -253,7 +254,7 @@ async def create_entity_endpoint(
 
 @router.put("/{source}/{source_id}")
 async def update_entity_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     source: str,
     source_id: str,
     data: EntityUpdate,
@@ -268,7 +269,7 @@ async def update_entity_endpoint(
 
 @router.delete("/media/{media_id}")
 async def delete_media_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     media_id: int,
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
@@ -280,7 +281,7 @@ async def delete_media_endpoint(
 
 @router.delete("/classifications/{classification_id}")
 async def delete_classification_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     classification_id: int,
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
@@ -292,7 +293,7 @@ async def delete_classification_endpoint(
 
 @router.delete("/{source}/{source_id}")
 async def delete_entity_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     source: str,
     source_id: str,
     _auth: Annotated[None, Depends(verify_api_key)] = None,
@@ -305,7 +306,7 @@ async def delete_entity_endpoint(
 
 @router.post("/entities/bulk", status_code=201)
 async def bulk_upsert_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     data: list[EntityCreate],
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
@@ -315,7 +316,7 @@ async def bulk_upsert_endpoint(
 
 @router.post("/media", status_code=201)
 async def create_media_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     data: MediaCreate,
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
@@ -328,7 +329,7 @@ async def create_media_endpoint(
 
 @router.post("/classifications", status_code=201)
 async def create_classification_endpoint(
-    session: SessionDep,
+    session: WriteSessionDep,
     data: ClassificationCreate,
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):

@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -26,8 +27,15 @@ def get_engine() -> AsyncEngine:
     return _engine
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_session(timeout_override: float | None = None) -> AsyncGenerator[AsyncSession, None]:
     if async_session is None:
         get_engine()
     async with async_session() as session:
+        timeout_ms = int((timeout_override or settings.query_timeout_seconds) * 1000)
+        await session.execute(text(f"SET statement_timeout = '{timeout_ms}'"))
+        yield session
+
+
+async def get_write_session() -> AsyncGenerator[AsyncSession, None]:
+    async for session in get_session(timeout_override=settings.request_timeout_seconds):
         yield session

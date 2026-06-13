@@ -1,6 +1,7 @@
 import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import StatementError
 
 logger = structlog.get_logger()
 
@@ -43,6 +44,26 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "request_id": getattr(request.state, "request_id", ""),
             },
         )
+
+    @app.exception_handler(StatementError)
+    async def statement_timeout_handler(request: Request, exc: StatementError):
+        orig_code = getattr(getattr(exc, "orig", None), "code", "")
+        if orig_code == "57014":
+            logger.warning(
+                "request.query_timeout",
+                path=request.url.path,
+                request_id=getattr(request.state, "request_id", ""),
+            )
+            return JSONResponse(
+                status_code=504,
+                content={
+                    "error": "GatewayTimeout",
+                    "message": "Query exceeded timeout limit",
+                    "code": 504,
+                    "request_id": getattr(request.state, "request_id", ""),
+                },
+            )
+        raise exc
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

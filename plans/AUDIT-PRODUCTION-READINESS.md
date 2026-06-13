@@ -882,11 +882,31 @@ async def search(...):
             timeout=settings.query_timeout
         )
     except asyncio.TimeoutError:
-        raise HTTPException(
+       raise HTTPException(
             status_code=504,
             detail="Search query timeout"
         )
-```
+    ```
+
+#### Resolution
+
+✅ **FIXED** — PostgreSQL `statement_timeout` at session level via `SET statement_timeout` in `get_session()`.
+
+- **Config**: `query_timeout_seconds: float = 10.0` in `Settings` (`config.py`)
+- **Read sessions**: `get_session()` sets `statement_timeout` per-session; catches ALL queries including implicit flush/commit/refresh
+- **Write sessions**: `get_write_session()` overrides with `request_timeout_seconds: float = 30.0` to allow bulk upserts more time
+- **Error handling**: Global `StatementError` exception handler catches PostgreSQL SQLSTATE `57014` (query_canceled) → returns 504 Gateway Timeout with `{"error": "GatewayTimeout", "message": "Query exceeded timeout limit", "code": 5504, "request_id": "..."}` format
+- **Non-timeout errors**: Re-raised for passthrough to existing error handlers
+- **Router split**: `SessionDep` (10s) for GET endpoints, `WriteSessionDep` (30s) for POST/PUT/DELETE endpoints
+
+**Why PostgreSQL `statement_timeout` over `asyncio.wait_for`**:
+- Catches ALL queries in session (implicit flush, commit, refresh) — no per-query wrapping needed
+- Single control point at session creation
+- DB cancels query server-side immediately, freeing resources (vs Python-side timeout waiting for query to return)
+- `ExceptionGroup` from anyio/asyncpg complicates HTTP-level exception testing; unit tests verify logic directly
+
+**Files changed**: `src/dmo/config.py`, `src/dmo/db.py`, `src/dmo/exceptions.py`, `src/dmo/api/router.py`  
+**Tests added**: `tests/test_timeout.py` (7 tests: timeout detection, non-timeout passthrough, session timeout verification, response format)
 
 ---
 
