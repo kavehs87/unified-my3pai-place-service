@@ -33,7 +33,7 @@ async def nearby(
     if cursor:
         from dmo.services.pagination import decode_cursor
         last_id, last_distance = decode_cursor(cursor)
-        dist_expr = "(ST_Distance(location, ST_MakePoint(:lon, :lat, 4326)::geography) / 1000.0)"
+        dist_expr = "(ST_Distance(location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography) / 1000.0)"
         cursor_filter = f" AND ({dist_expr} > :cursor_distance OR ({dist_expr} = :cursor_distance AND id > :cursor_id))"
         params["cursor_distance"] = last_distance
         params["cursor_id"] = last_id
@@ -44,11 +44,11 @@ async def nearby(
 
     rows_sql = text(f"""
         SELECT entities.*,
-               (ST_Distance(location, ST_MakePoint(:lon, :lat, 4326)::geography) / 1000.0) AS distance_km,
+               (ST_Distance(location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography) / 1000.0) AS distance_km,
                COUNT(*) OVER() AS total
         FROM entities
         WHERE {where_clause}
-          AND ST_DWithin(location, ST_MakePoint(:lon, :lat, 4326)::geography, :radius_m)
+          AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius_m)
         {cursor_filter}
         ORDER BY distance_km ASC, id ASC
         LIMIT :limit

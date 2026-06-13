@@ -64,6 +64,8 @@ But the `WHERE` clause at line 48 compares:
 ---
 
 ### 2. Spatial queries misuse `ST_MakePoint(:lon, :lat, 4326)`
+**Status: ✅ FIXED** | `spatial.py:36,47,51` → `ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography`
+
 **File:** `src/dmo/services/spatial.py:36, 47, 51`
 
 `ST_MakePoint` accepts 2, 3, or 4 arguments. The 3-argument form treats the third value as a **Z coordinate**, not an SRID. The code creates 3D points with `Z = 4326` and relies on the `::geography` cast to supply SRID 4326 implicitly. This is a latent correctness problem and can interact badly with spatial indexes.
@@ -325,10 +327,10 @@ Once those P0/P1 items are addressed, the service will be close to production-re
 
 | Range | Confirmed | Fabricated | Fixed | Total |
 |---|---|---|---|---|
-| Critical (P0) | 4 | 0 | 1 | 4 |
+| Critical (P0) | 4 | 0 | 2 | 4 |
 | High-Impact (P1) | 5 | 0 | 0 | 6 |
 | Medium (P2) | 11 | 0 | 0 | 11 |
 | Low/Polish (P3) | 5 | 0 | 0 | 6 |
-| **Total** | **28** | **1** | **1** | **29** |
+| **Total** | **28** | **1** | **2** | **29** |
 
 Issue #8 is the only partially fabricated concern. The `update_entity` function DOES update the `location` geography column when one coordinate is provided (falling back to the existing value for the missing one). The actual bug is that the `latitude`/`longitude` scalar Float columns are not updated (they're popped from `update_data` before `setattr`), creating inconsistency between the geography column and the scalar columns. This only manifests as a "silent ignore" when the existing entity has a NULL coordinate on the non-updated axis.
