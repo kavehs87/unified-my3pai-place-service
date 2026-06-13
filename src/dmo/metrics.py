@@ -1,4 +1,4 @@
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import Counter, Histogram
 
 REQUEST_DURATION = Histogram(
     "http_request_duration_seconds",
@@ -14,6 +14,3 @@ REQUEST_TOTAL = Counter(
 
 CACHE_HITS = Counter("cache_hits_total", "Total cache hits")
 CACHE_MISSES = Counter("cache_misses_total", "Total cache misses")
-
-ACTIVE_CONNECTIONS = Gauge("db_active_connections", "Active DB connections")
-POOL_SIZE = Gauge("db_pool_size", "DB pool size")
