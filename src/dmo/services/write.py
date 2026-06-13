@@ -23,7 +23,15 @@ class EntityError(Exception):
 
 
 async def invalidate_entity_caches(entity_id: UUID) -> None:
-    await cache_delete_pattern("dmo:detail:*")
+    for pattern in (
+        "dmo:detail:*",
+        "dmo:search:*",
+        "dmo:nearby:*",
+        "dmo:map:*",
+        "dmo:classifications:*",
+        "dmo:categories:*",
+    ):
+        await cache_delete_pattern(pattern)
 
 
 async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat: float) -> None:
