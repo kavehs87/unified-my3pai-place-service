@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_max_requests: int = 1000
     rate_limit_window_seconds: int = 60
-    pool_size: int = 20
-    max_overflow: int = 10
+    pool_size: int = 10
+    max_overflow: int = 5
     log_level: str = "INFO"
     allowed_origins: str = "*"
     request_timeout_seconds: float = 30.0
