@@ -20,7 +20,9 @@ The project has received three prior audits with claimed improvements, but **cri
 3. ~~**Cache invalidation failures cause data inconsistency** — Database commits succeed while cache remains stale~~ ✅ **FIXED June 14**
 4. ~~**Race condition in bulk operations** — Concurrent writes can cause entire batches to fail~~ ✅ **FIXED June 14**
 5. ~~**Missing transaction isolation** — No REPEATABLE_READ guard against phantom reads~~ ✅ **RESOLVED June 14**
-6. **Cursor validation missing** — Malformed cursors cause 500 errors (DoS vector)
+6. ~~**XSS in HTML description converter** — Unescaped user input in href/src attributes~~ ✅ **FIXED June 14**
+7. ~~**Cache stampede on cache miss** — Concurrent requests all hit database simultaneously~~ ✅ **FIXED June 14**
+8. **Cursor validation missing** — Malformed cursors cause 500 errors (DoS vector)
 
 ### Time to Production
 
@@ -512,9 +514,10 @@ Setting `REPEATABLE_READ` globally would add MVCC overhead and potential seriali
 ## High-Severity Issues (Fix This Sprint)
 
 ### 6. XSS Vulnerability in HTML Description Converter
-**Severity:** 🟠 **HIGH**  
-**File:** `src/dmo/services/detail.py:28-40`  
+**Severity:** 🟠 **HIGH** ✅ **FIXED**
+**File:** `src/dmo/services/detail.py:28-40`
 **Risk Level:** Client-side code execution, session hijacking
+**Resolved:** June 14, 2026
 
 #### Problem
 
@@ -595,12 +598,22 @@ def safe_serialize_prosemirror(node: dict) -> str:
     return bleach.clean(html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS)
 ```
 
+#### Resolution
+
+Applied two-layer defense in `src/dmo/services/detail.py`:
+
+1. **ProseMirror conversion** — `html.escape()` on all text content and attribute values (href, src, alt, title). `_safe_href()` blocks `javascript:`, `data:`, and `vbscript:` URL schemes.
+2. **HTML passthrough** — `bleach.clean()` with whitelist of 18 safe tags and `href` on `<a>` as the only allowed attribute.
+
+Added `bleach[css]>=6.1.0,<7.0.0` dependency. 30 XSS tests in `tests/test_xss.py` cover injection via href, src, alt, text content, event handlers, and data URIs.
+
 ---
 
 ### 7. Cache Stampede Vulnerability
-**Severity:** 🟠 **HIGH**  
-**File:** `src/dmo/api/router.py:81-88` (and similar in all GET endpoints)  
+**Severity:** 🟠 **HIGH** ✅ **FIXED**
+**File:** `src/dmo/api/router.py:81-88` (and similar in all GET endpoints)
 **Risk Level:** Database overload, service degradation
+**Resolved:** June 14, 2026
 
 #### Problem
 
@@ -689,6 +702,18 @@ async def get_search_with_xfetch(session, q, source, ...):
     await cache_set("search", cache_key, json.dumps(result), ttl=300)
     return result
 ```
+
+#### Resolution
+
+Implemented `cache_get_or_set` in `src/dmo/services/cache.py` using Redis `SET NX` lock pattern:
+
+1. **Cache check** — returns cached value on hit
+2. **Lock acquisition** — `SET lock_key "1" NX EX 5` on miss; first request becomes lock holder
+3. **Waiter behavior** — non-holders sleep 50ms, retry cache, fall through if stale lock
+4. **Double-check** — lock holder re-checks cache before fetching (another holder may have filled it)
+5. **Lock release** — `DEL lock_key` in `finally` block after fetch + cache set
+
+Applied to all 6 GET endpoints (`/search`, `/nearby`, `/map`, `/categories`, `/classifications`, `/detail`). 7 stampede tests in `tests/test_cache_stampede.py` cover lock acquisition, waiter behavior, stale lock fallback, double-check, and TTL passthrough. `conftest.py` skips patching `cache_get_or_set` for stampede tests so they exercise real locking logic.
 
 ---
 
@@ -1073,8 +1098,8 @@ Before deploying to production, ensure:
 - [x] Cache invalidation failures are logged and handled
 - [x] Bulk upsert uses PostgreSQL UPSERT or advisory locks
 - [x] Transaction isolation is set to REPEATABLE_READ (resolved: READ_COMMITTED sufficient with advisory lock)
-- [ ] XSS in HTML converter is fixed (escape attributes)
-- [ ] Cache stampede mitigation is implemented (locking or generation IDs)
+- [x] XSS in HTML converter is fixed (html.escape + bleach sanitization)
+- [x] Cache stampede mitigation is implemented (Redis SET NX lock per cache key)
 - [ ] Cursor validation returns 400 on malformed input
 - [ ] Query timeouts are set (5s default)
 - [ ] All security tests pass
