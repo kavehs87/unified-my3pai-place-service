@@ -43,6 +43,19 @@ async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat:
     )
 
 
+async def _set_locations_batch(session: AsyncSession, updates: list[tuple[UUID, float, float]]) -> None:
+    if not updates:
+        return
+
+    values = ", ".join(f"('{eid}'::uuid, {lon}, {lat})" for eid, lon, lat in updates)
+    query = f"""
+        UPDATE entities SET location = ST_SetSRID(ST_MakePoint(tmp.lon, tmp.lat), 4326)
+        FROM (VALUES {values}) AS tmp(id, lon, lat)
+        WHERE entities.id = tmp.id
+    """
+    await session.execute(text(query))
+
+
 async def _fetch_entity(session: AsyncSession, entity_id: UUID) -> Entity:
     stmt = select(Entity).where(col(Entity.id) == entity_id)
     result = await session.exec(stmt)
@@ -337,8 +350,7 @@ async def bulk_upsert(
         location_updates.append((entity.id, lon, lat))
 
     if location_updates:
-        for entity_id, lon, lat in location_updates:
-            await _set_location(session, entity_id, lon, lat)
+        await _set_locations_batch(session, location_updates)
 
     await session.commit()
 

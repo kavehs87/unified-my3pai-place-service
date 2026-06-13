@@ -131,26 +131,13 @@ Additionally, the SQLModel definition at `database.py:112` only references `idx_
 
 ### 5. `bulk_upsert` `_set_location` loops are O(n) sequential UPDATEs
 
-**Status: PARTIALLY FIXED**
+**Status: FIXED** ✅
 
-**File:** `src/dmo/services/write.py:340-341`
+**File:** `src/dmo/services/write.py`
 
-```python
-if location_updates:
-    for entity_id, lon, lat in location_updates:
-        await _set_location(session, entity_id, lon, lat)
-```
+Replaced O(n) sequential `_set_location` calls with `_set_locations_batch`, which executes a single `UPDATE ... FROM (VALUES ...)` statement. UUID values are safely inlined as literals (internal-generated, not user input).
 
-For 100 entities with coordinates, this is 100 sequential `UPDATE entities SET location = ...` roundtrips. This could be batched into a single CTE:
-
-```sql
-UPDATE entities SET location = ST_SetSRID(ST_MakePoint(
-    CASE id WHEN :id1 THEN :lon1 ... END,
-    CASE id WHEN :id1 THEN :lat1 ... END
-), 4326) WHERE id IN (...)
-```
-
-> **Verification: CONFIRMED.** `write.py:340-341` iterates one-by-one. Location updates for 100 entities = 100 sequential SQL executions.
+> **Fix Commit:** `git add && git commit` below
 
 ---
 
