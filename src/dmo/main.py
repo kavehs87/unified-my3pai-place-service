@@ -46,6 +46,12 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_tags=[
+        {"name": "Read", "description": "Public read endpoints — search, nearby, map, detail, classifications"},
+        {"name": "Write", "description": "Authenticated write endpoints — create, update, delete (requires X-API-Key)"},
+        {"name": "System", "description": "Health and metrics endpoints"},
+    ],
+    swagger_ui_parameters={"defaultModelsExpandDepth": -1},
 )
 
 app.add_middleware(RequestIDMiddleware)

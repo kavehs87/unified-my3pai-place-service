@@ -1,7 +1,8 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.security import APIKeyHeader
 from pydantic import TypeAdapter
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -62,13 +63,15 @@ router = APIRouter()
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 WriteSessionDep = Annotated[AsyncSession, Depends(get_write_session)]
 
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-def verify_api_key(x_api_key: str = Header(default="")) -> None:
+
+def verify_api_key(x_api_key: str = Depends(api_key_header)) -> None:
     if settings.api_key and x_api_key != settings.api_key:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-@router.get("/search", response_model=CursorPaginatedResponse[EntityListItem])
+@router.get("/search", response_model=CursorPaginatedResponse[EntityListItem], tags=["Read"])
 async def search_endpoint(
     session: SessionDep,
     q: str | None = Query(None, max_length=500),
@@ -105,7 +108,7 @@ async def search_endpoint(
     return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
 
 
-@router.get("/nearby", response_model=CursorPaginatedResponse[EntityListItem])
+@router.get("/nearby", response_model=CursorPaginatedResponse[EntityListItem], tags=["Read"])
 async def nearby_endpoint(
     session: SessionDep,
     lat: float = Query(..., ge=-90, le=90),
@@ -144,7 +147,7 @@ async def nearby_endpoint(
     return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
 
 
-@router.get("/map", response_model=CursorPaginatedResponse[EntityListItem])
+@router.get("/map", response_model=CursorPaginatedResponse[EntityListItem], tags=["Read"])
 async def map_endpoint(
     session: SessionDep,
     bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat", max_length=100),
@@ -200,7 +203,7 @@ async def map_endpoint(
     return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
 
 
-@router.get("/classifications/categories", response_model=list[str])
+@router.get("/classifications/categories", response_model=list[str], tags=["Read"])
 async def categories_endpoint(
     session: SessionDep,
 ):
@@ -217,7 +220,7 @@ async def categories_endpoint(
     return TypeAdapter(list[str]).validate_python(json.loads(fallback_json))
 
 
-@router.get("/classifications", response_model=CursorPaginatedResponse[ClassificationListItem])
+@router.get("/classifications", response_model=CursorPaginatedResponse[ClassificationListItem], tags=["Read"])
 async def classifications_endpoint(
     session: SessionDep,
     entity_id: str | None = Query(None, max_length=500),
@@ -254,7 +257,7 @@ async def classifications_endpoint(
     return CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(fallback_json))
 
 
-@router.get("/{source}/{source_id}", response_model=EntityDetail)
+@router.get("/{source}/{source_id}", response_model=EntityDetail, tags=["Read"])
 async def detail_endpoint(
     session: SessionDep,
     source: str,
@@ -302,7 +305,7 @@ async def detail_endpoint(
     return detail
 
 
-@router.post("/entities", status_code=201)
+@router.post("/entities", status_code=201, tags=["Write"])
 async def create_entity_endpoint(
     session: WriteSessionDep,
     data: EntityCreate,
@@ -315,7 +318,7 @@ async def create_entity_endpoint(
     return item
 
 
-@router.put("/{source}/{source_id}")
+@router.put("/{source}/{source_id}", tags=["Write"])
 async def update_entity_endpoint(
     session: WriteSessionDep,
     source: str,
@@ -330,7 +333,7 @@ async def update_entity_endpoint(
     return item
 
 
-@router.delete("/media/{media_id}")
+@router.delete("/media/{media_id}", tags=["Write"])
 async def delete_media_endpoint(
     session: WriteSessionDep,
     media_id: int,
@@ -342,7 +345,7 @@ async def delete_media_endpoint(
     return {"deleted": True}
 
 
-@router.delete("/classifications/{classification_id}")
+@router.delete("/classifications/{classification_id}", tags=["Write"])
 async def delete_classification_endpoint(
     session: WriteSessionDep,
     classification_id: int,
@@ -354,7 +357,7 @@ async def delete_classification_endpoint(
     return {"deleted": True}
 
 
-@router.delete("/{source}/{source_id}")
+@router.delete("/{source}/{source_id}", tags=["Write"])
 async def delete_entity_endpoint(
     session: WriteSessionDep,
     source: str,
@@ -367,7 +370,7 @@ async def delete_entity_endpoint(
     return {"deleted": True}
 
 
-@router.post("/entities/bulk", status_code=201)
+@router.post("/entities/bulk", status_code=201, tags=["Write"])
 async def bulk_upsert_endpoint(
     session: WriteSessionDep,
     data: Annotated[list[EntityCreate], Body(..., max_length=1000)],
@@ -377,7 +380,7 @@ async def bulk_upsert_endpoint(
     return items
 
 
-@router.post("/media", status_code=201)
+@router.post("/media", status_code=201, tags=["Write"])
 async def create_media_endpoint(
     session: WriteSessionDep,
     data: MediaCreate,
@@ -390,7 +393,7 @@ async def create_media_endpoint(
     return result
 
 
-@router.post("/classifications", status_code=201)
+@router.post("/classifications", status_code=201, tags=["Write"])
 async def create_classification_endpoint(
     session: WriteSessionDep,
     data: ClassificationCreate,

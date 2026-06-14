@@ -14,7 +14,7 @@ health_router = APIRouter()
 _HEALTH_TIMEOUT = 1.5
 
 
-@health_router.get("/health")
+@health_router.get("/health", tags=["System"])
 async def health(session: AsyncSession = Depends(get_session)):
     components: dict[str, str] = {}
 
