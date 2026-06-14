@@ -1,5 +1,11 @@
 import os
 
+# Override env vars for local testing before any dmo imports.
+# .env has Docker hostnames (db, redis); tests need localhost.
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
+os.environ["DATABASE_URL_SYNC"] = "postgresql+psycopg2://postgres:postgres@localhost:5432/dmo"
+os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -64,6 +70,7 @@ def _disable_cache(request):
 async def engine():
     eng = create_async_engine(TEST_DB_URL, echo=False)
     async with eng.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(SQLModel.metadata.create_all)
     yield eng
     await eng.dispose()
