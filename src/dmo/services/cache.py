@@ -87,14 +87,15 @@ async def cache_get_or_set(
     # Try to acquire lock (SET NX)
     acquired = await client.set(lock_key, "1", nx=True, ex=_LOCK_TIMEOUT)
     if not acquired:
-        # Another request is fetching — poll cache until available or timeout
-        for _ in range(40):  # 40 x 50ms = 2s max wait
+        # Another request is fetching — poll cache until available or lock timeout
+        max_retries = int(_LOCK_TIMEOUT / _STAMPEDE_RETRY_DELAY)
+        for _ in range(max_retries):
             await asyncio.sleep(_STAMPEDE_RETRY_DELAY)
             value = await client.get(key)
             if value is not None:
                 CACHE_HITS.inc()
                 return value
-        # Lock may be stale or fetch too slow — fall through to fetch without lock
+        # Lock timed out or fetch too slow — fall through to fetch without lock
         return None
 
     try:

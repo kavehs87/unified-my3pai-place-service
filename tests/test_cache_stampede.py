@@ -210,3 +210,29 @@ async def test_stampede_ttl_respected():
         set_calls = [c for c in fake_client.set.call_args_list if "lock" not in str(c)]
         assert len(set_calls) == 1
         assert set_calls[0][1].get("ex") == 300 or set_calls[0][0][2] == 300
+
+
+@pytest.mark.asyncio
+async def test_stampede_waiter_retry_matches_lock_timeout():
+    """Waiters should retry for duration matching lock timeout, not hardcoded 2s."""
+    from dmo.services import cache as cache_module
+
+    async def fetch_fn() -> str:
+        return '{"results": []}'
+
+    # Waiter that simulates lock held (SET NX fails), cache stays empty through all retries
+    fake_client = AsyncMock()
+    fake_client.get = AsyncMock(return_value=None)  # never populated
+    fake_client.set = AsyncMock(return_value=False)   # can't acquire lock
+
+    with patch.object(cache_module, "get_cache", new_callable=AsyncMock) as mock_get_cache:
+        mock_get_cache.return_value = fake_client
+
+        result = await cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
+
+    # Should fall through after all retries (matching lock timeout)
+    assert result is None
+    # Verify retry count matches lock timeout / retry delay
+    expected_retries = int(cache_module._LOCK_TIMEOUT / cache_module._STAMPEDE_RETRY_DELAY)
+    # get is called: initial miss + expected_retries polls
+    assert fake_client.get.call_count >= expected_retries
