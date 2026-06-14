@@ -15,6 +15,11 @@ async def list_classifications(
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[ClassificationListItem], int, str | None, bool]:
+    """List classifications with optional filters and cursor pagination.
+
+    Filters by entity_id, category, or value_code. Joins with entities
+    to include entity reference in results. Returns (items, total, next_cursor, has_more).
+    """
     stmt = select(Classification).where(col(Classification.is_active))
 
     if entity_id:
@@ -93,6 +98,7 @@ async def list_classifications(
 
 
 async def list_categories(session: AsyncSession) -> list[str]:
+    """Return distinct, sorted list of active classification categories."""
     stmt = (
         select(col(Classification.category))
         .where(col(Classification.is_active))

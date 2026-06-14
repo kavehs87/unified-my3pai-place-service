@@ -18,6 +18,7 @@ _STAMPEDE_RETRY_DELAY = 0.05
 
 
 async def get_cache() -> redis.Redis:
+    """Get or create Redis client singleton."""
     global _cache
     if _cache is None:
         async with _cache_lock:
@@ -27,12 +28,14 @@ async def get_cache() -> redis.Redis:
 
 
 def _make_key(endpoint: str, params: dict[str, str | int | float | None]) -> str:
+    """Create MD5-hashed cache key from endpoint and params."""
     sorted_params = json.dumps(params, sort_keys=True)
     param_hash = hashlib.sha256(sorted_params.encode()).hexdigest()
     return f"dmo:{endpoint}:{param_hash}"
 
 
 async def cache_get(endpoint: str, params: dict[str, str | int | float | None]) -> str | None:
+    """Get cached value by endpoint and params. Returns None on miss."""
     client = await get_cache()
     key = _make_key(endpoint, params)
     value = await client.get(key)
@@ -49,12 +52,14 @@ async def cache_set(
     value: str,
     ttl: int | None = None,
 ) -> None:
+    """Set cache value with TTL. Uses default TTL from settings if not provided."""
     client = await get_cache()
     key = _make_key(endpoint, params)
     await client.set(key, value, ex=ttl or settings.cache_ttl)
 
 
 async def cache_delete_pattern(pattern: str) -> None:
+    """Delete all cache keys matching a pattern using SCAN."""
     client = await get_cache()
     async for key in client.scan_iter(match=pattern):
         await client.delete(key)
@@ -116,5 +121,6 @@ async def cache_set_async(
     value: str,
     ttl: int | None = None,
 ) -> None:
+    """Fire-and-forget cache set via asyncio task with error callback."""
     task = asyncio.create_task(cache_set(endpoint, params, value, ttl=ttl))
     task.add_done_callback(_cache_task_done)

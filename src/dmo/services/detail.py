@@ -99,6 +99,10 @@ async def get_detail(
     source: str,
     source_id: str,
 ) -> EntityDetail | None:
+    """Fetch entity detail with media and classifications via asyncio.gather.
+
+    Transforms description based on description_format. Returns None if not found.
+    """
     entity_stmt = select(Entity).where(
         col(Entity.source) == source,
         col(Entity.source_id) == source_id,
@@ -164,6 +168,10 @@ async def get_open_status(
     source: str,
     source_id: str,
 ) -> OpenStatus | None:
+    """Fetch is_open, opens_at, closes_at for an entity by source/source_id.
+
+    Returns None if entity not found.
+    """
     stmt = select(Entity.is_open, Entity.opens_at, Entity.closes_at).where(
         col(Entity.source) == source,
         col(Entity.source_id) == source_id,

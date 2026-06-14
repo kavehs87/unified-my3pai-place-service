@@ -15,6 +15,11 @@ async def search(
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
+    """Full-text search with filters and cursor pagination.
+
+    Uses pg_trgm for text matching on name and summary fields.
+    Returns (items, total, next_cursor, has_more).
+    """
     where_parts = ["entities.is_active = true"]
     params: dict[str, object] = {}
 

@@ -16,6 +16,11 @@ async def nearby(
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
+    """Find entities within radius of a point, sorted by distance.
+
+    Uses ST_DWithin for spatial filtering and ST_Distance for sorting.
+    Returns (items, total, next_cursor, has_more).
+    """
     radius_m = radius_km * 1000
 
     where_parts = ["entities.is_active = true"]
@@ -99,6 +104,11 @@ async def map_query(
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
+    """Find entities within a bounding box.
+
+    Uses ST_Intersects with ST_MakeEnvelope for bounding box filtering.
+    Returns (items, total, next_cursor, has_more).
+    """
     where_parts = ["entities.is_active = true"]
     params: dict[str, object] = {}
 

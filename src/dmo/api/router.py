@@ -1,7 +1,7 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 from pydantic import TypeAdapter
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -315,7 +315,7 @@ async def delete_entity_endpoint(
 @router.post("/entities/bulk", status_code=201)
 async def bulk_upsert_endpoint(
     session: WriteSessionDep,
-    data: list[EntityCreate],
+    data: Annotated[list[EntityCreate], Body(..., max_length=1000)],
     _auth: Annotated[None, Depends(verify_api_key)] = None,
 ):
     items = await bulk_upsert_service(session, data)

@@ -112,7 +112,7 @@ class EntityDetail(BaseModel):
     country: str | None = None
     region: str | None = None
     locality: str | None = None
-    region_names: list[str] | None = None
+    region_names: list[str] | None = Field(default=None, max_length=100)
     address: str | None = None
     postal_code: str | None = None
     thumbnail_url: str | None = None
@@ -165,7 +165,7 @@ class EntityCreate(BaseModel):
     description_format: str | None = Field(None, max_length=50, strip_whitespace=True)
     place_type: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
     category_class: str | None = Field(None, max_length=100, strip_whitespace=True)
-    secondary_types: list[str] | None = None
+    secondary_types: list[str] | None = Field(default=None, max_length=100)
     collection_id: str | None = Field(None, max_length=255, strip_whitespace=True)
     collection_name: str | None = Field(None, max_length=255, strip_whitespace=True)
     collection_slug: str | None = Field(None, max_length=255, strip_whitespace=True)
@@ -174,7 +174,7 @@ class EntityCreate(BaseModel):
     country: str | None = Field(None, max_length=100, strip_whitespace=True)
     region: str | None = Field(None, max_length=255, strip_whitespace=True)
     locality: str | None = Field(None, max_length=255, strip_whitespace=True)
-    region_names: list[str] | None = None
+    region_names: list[str] | None = Field(default=None, max_length=100)
     address: str | None = Field(None, max_length=500, strip_whitespace=True)
     postal_code: str | None = Field(None, max_length=20, strip_whitespace=True)
     thumbnail_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
@@ -230,7 +230,7 @@ class EntityUpdate(BaseModel):
     description_format: str | None = Field(None, max_length=50, strip_whitespace=True)
     place_type: str | None = Field(None, min_length=1, max_length=100, strip_whitespace=True)
     category_class: str | None = Field(None, max_length=100, strip_whitespace=True)
-    secondary_types: list[str] | None = None
+    secondary_types: list[str] | None = Field(default=None, max_length=100)
     collection_id: str | None = Field(None, max_length=255, strip_whitespace=True)
     collection_name: str | None = Field(None, max_length=255, strip_whitespace=True)
     collection_slug: str | None = Field(None, max_length=255, strip_whitespace=True)
@@ -239,7 +239,7 @@ class EntityUpdate(BaseModel):
     country: str | None = Field(None, max_length=100, strip_whitespace=True)
     region: str | None = Field(None, max_length=255, strip_whitespace=True)
     locality: str | None = Field(None, max_length=255, strip_whitespace=True)
-    region_names: list[str] | None = None
+    region_names: list[str] | None = Field(default=None, max_length=100)
     address: str | None = Field(None, max_length=500, strip_whitespace=True)
     postal_code: str | None = Field(None, max_length=20, strip_whitespace=True)
     thumbnail_url: str | None = Field(None, max_length=2048, strip_whitespace=True)

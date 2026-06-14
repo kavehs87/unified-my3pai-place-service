@@ -972,6 +972,18 @@ def validate_coordinates(cls, v, info):
 
 The entire `EntityDetail` is cached at 60s (for open_status fields), but stable fields (name, description) are unnecessarily invalidated. Previous audit implemented separate caches but they may not be merged correctly.
 
+#### Resolution
+
+✅ **FIXED** — Stripped open status fields from detail cache, added stampede protection to open status cache.
+
+- **Detail cache**: `is_open`, `opens_at`, `closes_at` set to `None` before caching — prevents stale time-sensitive values persisting at 1800s TTL
+- **Open status cache**: Uses `cache_get_or_set` with distributed lock — prevents stampede on cache miss
+- **None sentinel**: `"null"` cached for entities without opening hours — avoids repeated DB queries
+- **Merge logic**: Open status fields populated exclusively from `open_status` cache (60s TTL), never from detail cache
+
+**Files changed**: `src/dmo/api/router.py`
+**Tests added**: `tests/test_open_status_cache.py` (7 tests: 3 HTTP-level, 4 unit tests for cache logic)
+
 ---
 
 ### 13. Missing Indexes on Foreign Keys
@@ -988,6 +1000,15 @@ Index("idx_media_entity_id", "entity_id"),
 Index("idx_classification_entity_id", "entity_id"),
 ```
 
+#### Resolution
+
+✅ **FIXED** — Added B-tree indexes on `entity_id` foreign key columns.
+
+- **Media table**: `idx_media_entity_id` on `media.entity_id` — speeds up cascade deletes and JOIN queries in detail endpoint
+- **Classifications table**: `idx_classification_entity_id` on `classifications.entity_id` — speeds up cascade deletes and entity filter queries
+
+**Files changed**: `src/dmo/models/database.py`, `migrations/versions/007_add_entity_id_indexes.py`
+
 ---
 
 ### 14. Health Check Timeout Detection
@@ -996,21 +1017,16 @@ Index("idx_classification_entity_id", "entity_id"),
 
 The health endpoint has no timeout. If database connection hangs, `/health` hangs forever, preventing orchestrators from detecting failure.
 
-```python
-@router.get("/health")
-async def health_check():
-    try:
-        # ✅ Add timeout
-        db_ok = await asyncio.wait_for(
-            session.exec(select(1)),
-            timeout=3.0
-        )
-    except asyncio.TimeoutError:
-        return JSONResponse(
-            {"status": "degraded", "components": {"database": "timeout"}},
-            status_code=503
-        )
-```
+#### Resolution
+
+✅ **FIXED** — Added `asyncio.wait_for` timeout to both DB and Redis health checks.
+
+- **Timeout**: 3s per check (`_HEALTH_TIMEOUT` constant) — prevents endpoint from hanging forever
+- **Timeout detection**: Catches `asyncio.TimeoutError` separately from generic exceptions — reports `"timeout"` vs `"down"` status
+- **Coverage**: Both database (`SELECT 1`) and Redis (`PING`) checks are protected
+
+**Files changed**: `src/dmo/api/health.py`
+**Tests added**: `tests/test_health.py` (2 tests: both timeout, Redis-only timeout)
 
 ---
 
@@ -1020,30 +1036,28 @@ async def health_check():
 
 Add logging for queries that exceed a threshold (e.g., 500ms):
 
-```python
-# middleware
-@app.middleware("http")
-async def log_slow_queries(request: Request, call_next):
-    start = time.time()
-    response = await call_next(request)
-    elapsed = (time.time() - start) * 1000
-    
-    if elapsed > 500:
-        logger.warning("slow_request", 
-                      path=request.url.path,
-                      method=request.method,
-                      elapsed_ms=elapsed)
-    return response
-```
+#### Resolution
+
+✅ **FIXED** — Added slow request logging to `metrics_middleware`.
+
+- **Threshold**: Configurable via `slow_request_threshold_ms` (default: 500ms) in `Settings`
+- **Logging**: Uses structlog with fields: `event="slow_request"`, `path`, `method`, `elapsed_ms`, `status`, `request_id`
+- **Placement**: Integrated into existing `metrics_middleware` — avoids duplicate middleware, already excludes `/health`, `/metrics`, `/docs`
+- **Output**: JSON-structured warning log to stderr, visible in container logs / log aggregation
+
+**Files changed**: `src/dmo/config.py`, `src/dmo/main.py`
+
+---
 
 ---
 
 ## Low-Severity Issues (Polish)
 
-### 16. Array Input Validation
+### 16. Array Input Validation ✅ **FIXED June 14**
 **File:** `src/dmo/models/schemas.py:168, 177`
 
-`place_types` and `region_names` arrays have no max length. Accepting 10,000 items in a single request is wasteful.
+`secondary_types` and `region_names` arrays now have `max_length=100` on `EntityCreate` and `EntityUpdate`.
+Resolved via Pydantic `Field(default=None, max_length=100)`. 11 tests added (`tests/test_array_and_bulk_validation.py`).
 
 ```python
 place_types: list[str] = Field(default=[], max_length=100)
@@ -1052,10 +1066,10 @@ region_names: list[str] = Field(default=[], max_length=100)
 
 ---
 
-### 17. Bulk Size Limit
+### 17. Bulk Size Limit ✅ **FIXED June 14**
 **File:** `src/dmo/api/router.py:287-294`
 
-No limit on bulk upsert batch size. Prevent abuse:
+Bulk upsert endpoint now has `Body(..., max_length=1000)` to limit batch size. Resolved via FastAPI's built-in validation. 3 tests added (`tests/test_array_and_bulk_validation.py`).
 
 ```python
 @router.post("/entities/bulk")
@@ -1069,11 +1083,11 @@ async def bulk_upsert_endpoint(
 
 ---
 
-### 18. Missing Docstrings
+### 18. Missing Docstrings ✅ **FIXED June 14**
 **Severity:** 🟢 **LOW**  
 **Files:** Multiple service functions
 
-Add docstrings explaining function behavior, parameters, return values, and exceptions.
+Added docstrings to all service functions: `search`, `nearby`, `map_query`, `list_classifications`, `list_categories`, `get_detail`, `get_open_status`, `create_entity`, `update_entity`, `delete_entity`, `bulk_upsert`, `create_media`, `delete_media`, `create_classification`, `delete_classification`, `invalidate_entity_caches`, `_set_location`, `_set_locations_batch`, `_fetch_entity`, `get_cache`, `_make_key`, `cache_get`, `cache_set`, `cache_delete_pattern`, `cache_get_or_set`, `cache_set_async`.
 
 ---
 

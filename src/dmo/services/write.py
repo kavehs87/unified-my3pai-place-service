@@ -23,6 +23,7 @@ class EntityError(Exception):
 
 
 async def invalidate_entity_caches(entity_id: UUID) -> None:
+    """Purge all cache patterns on any entity write."""
     for pattern in (
         "dmo:detail:*",
         "dmo:open_status:*",
@@ -36,6 +37,7 @@ async def invalidate_entity_caches(entity_id: UUID) -> None:
 
 
 async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat: float) -> None:
+    """Set PostGIS location column for a single entity via raw SQL."""
     await session.execute(
         text("UPDATE entities SET location = ST_SetSRID(ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid").bindparams(
             lat=lat, lon=lon, eid=entity_id
@@ -44,6 +46,7 @@ async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat:
 
 
 async def _set_locations_batch(session: AsyncSession, updates: list[tuple[UUID, float, float]]) -> None:
+    """Set PostGIS location column for multiple entities via raw SQL."""
     if not updates:
         return
 
@@ -64,6 +67,7 @@ async def _set_locations_batch(session: AsyncSession, updates: list[tuple[UUID, 
 
 
 async def _fetch_entity(session: AsyncSession, entity_id: UUID) -> Entity:
+    """Fetch entity by ID for response serialization. Raises EntityError if not found."""
     stmt = select(Entity).where(col(Entity.id) == entity_id)
     result = await session.exec(stmt)
     return result.one()
@@ -73,6 +77,10 @@ async def create_entity(
     session: AsyncSession,
     data: EntityCreate,
 ) -> EntityListItem:
+    """Create a new entity with optional location and media/classifications.
+
+    Raises EntityError if source/source_id already exists.
+    """
     entity = Entity(
         source=data.source,
         source_id=data.source_id,
@@ -155,6 +163,10 @@ async def update_entity(
     source_id: str,
     data: EntityUpdate,
 ) -> EntityListItem:
+    """Update an existing entity by source/source_id.
+
+    Only updates fields provided in data. Raises EntityError if not found.
+    """
     stmt = select(Entity).where(
         col(Entity.source) == source,
         col(Entity.source_id) == source_id,
@@ -209,6 +221,10 @@ async def delete_entity(
     source: str,
     source_id: str,
 ) -> bool:
+    """Soft-delete an entity by setting is_active to False.
+
+    Returns False if not found.
+    """
     stmt = select(Entity).where(
         col(Entity.source) == source,
         col(Entity.source_id) == source_id,
@@ -228,6 +244,10 @@ async def bulk_upsert(
     session: AsyncSession,
     entities: list[EntityCreate],
 ) -> list[EntityListItem]:
+    """Bulk upsert entities using ON CONFLICT DO UPDATE.
+
+    Serializes operations to prevent race conditions. Returns created/updated entities.
+    """
     if not entities:
         return []
 
@@ -381,6 +401,7 @@ async def create_media(
     session: AsyncSession,
     data: MediaCreate,
 ) -> MediaCreateResponse:
+    """Create media for an entity. Raises EntityError if entity not found."""
     stmt = select(Entity).where(col(Entity.id) == data.entity_id)
     entity = (await session.exec(stmt)).first()
     if not entity:
@@ -415,6 +436,7 @@ async def delete_media(
     session: AsyncSession,
     media_id: int,
 ) -> bool:
+    """Soft-delete media by ID. Returns False if not found."""
     stmt = select(Media).where(Media.id == media_id, col(Media.is_active))
     media = (await session.exec(stmt)).first()
     if not media:
@@ -431,6 +453,7 @@ async def create_classification(
     session: AsyncSession,
     data: ClassificationCreate,
 ) -> ClassificationCreateResponse:
+    """Create classification for an entity. Raises EntityError if entity not found."""
     stmt = select(Entity).where(col(Entity.id) == data.entity_id)
     entity = (await session.exec(stmt)).first()
     if not entity:
@@ -454,6 +477,7 @@ async def delete_classification(
     session: AsyncSession,
     classification_id: int,
 ) -> bool:
+    """Soft-delete classification by ID. Returns False if not found."""
     stmt = select(Classification).where(Classification.id == classification_id, col(Classification.is_active))
     classif = (await session.exec(stmt)).first()
     if not classif:

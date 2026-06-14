@@ -5,15 +5,14 @@ Revises:
 Create Date: 2025-01-01
 """
 
-from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, None] = None
-depends_on: Union[str, None] = None
+down_revision: str | None = None
+branch_labels: str | None = None
+depends_on: str | None = None
 
 
 def upgrade() -> None:
