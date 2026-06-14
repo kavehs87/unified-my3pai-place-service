@@ -1,4 +1,6 @@
-FROM ghcr.io/astral-sh/uv:python3.12-slim AS builder
+FROM python:3.12-slim AS builder
+
+RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
@@ -10,6 +12,7 @@ WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app/src"
 
 COPY pyproject.toml ./
 COPY src/ ./src/
