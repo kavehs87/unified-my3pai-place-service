@@ -1,4 +1,5 @@
 """Error resilience tests: Redis failures, database errors, edge cases."""
+
 from unittest.mock import patch
 
 import pytest

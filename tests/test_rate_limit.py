@@ -6,7 +6,7 @@ from httpx import AsyncClient
 
 class FakePipeline:
     """Fake Redis pipeline that returns controllable results.
-    
+
     Two-pipeline pattern: first pipeline checks count, second adds member.
     """
 
@@ -114,17 +114,20 @@ async def test_rate_limit_exceeded():
 
         with patch("dmo.middleware.rate_limit.get_cache", fake_get_cache):
             middleware = RateLimiterMiddleware(app=lambda s, r, e: None)
-            request = Request({
-                "type": "http",
-                "method": "GET",
-                "path": "/search",
-                "query_string": b"",
-                "headers": [],
-                "server": ("localhost", 8000),
-            })
+            request = Request(
+                {
+                    "type": "http",
+                    "method": "GET",
+                    "path": "/search",
+                    "query_string": b"",
+                    "headers": [],
+                    "server": ("localhost", 8000),
+                }
+            )
 
             async def fake_call_next(req):
                 from starlette.responses import Response
+
                 return Response()
 
             with pytest.raises(HTTPException) as exc_info:

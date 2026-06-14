@@ -11,7 +11,7 @@ from dmo.services.cache import get_cache
 
 health_router = APIRouter()
 
-_HEALTH_TIMEOUT = 3.0
+_HEALTH_TIMEOUT = 1.5
 
 
 @health_router.get("/health")

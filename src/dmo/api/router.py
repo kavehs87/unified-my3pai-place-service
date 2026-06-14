@@ -78,11 +78,22 @@ async def search_endpoint(
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
-    search_params = {"q": q, "source": source, "place_type": place_type, "country": country, "page_size": page_size, "cursor": cursor}
+    search_params = {
+        "q": q,
+        "source": source,
+        "place_type": place_type,
+        "country": country,
+        "page_size": page_size,
+        "cursor": cursor,
+    }
 
     async def _fetch_search() -> str:
-        items, total, next_cursor, has_more = await search_service(session, q, source, place_type, country, cursor=cursor, page_size=page_size)
-        result = CursorPaginatedResponse[EntityListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
+        items, total, next_cursor, has_more = await search_service(
+            session, q, source, place_type, country, cursor=cursor, page_size=page_size
+        )
+        result = CursorPaginatedResponse[EntityListItem](
+            results=items, total=total, next_cursor=next_cursor, has_more=has_more
+        )
         return json.dumps(result.model_dump(mode="json"))
 
     cached = await cache_get_or_set("search", search_params, fetch_fn=_fetch_search)
@@ -105,11 +116,23 @@ async def nearby_endpoint(
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
-    nearby_params = {"lat": lat, "lon": lon, "radius_km": radius_km, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor}
+    nearby_params = {
+        "lat": lat,
+        "lon": lon,
+        "radius_km": radius_km,
+        "source": source,
+        "place_type": place_type,
+        "page_size": page_size,
+        "cursor": cursor,
+    }
 
     async def _fetch_nearby() -> str:
-        items, total, next_cursor, has_more = await nearby_service(session, lat, lon, radius_km, source, place_type, cursor=cursor, page_size=page_size)
-        result = CursorPaginatedResponse[EntityListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
+        items, total, next_cursor, has_more = await nearby_service(
+            session, lat, lon, radius_km, source, place_type, cursor=cursor, page_size=page_size
+        )
+        result = CursorPaginatedResponse[EntityListItem](
+            results=items, total=total, next_cursor=next_cursor, has_more=has_more
+        )
         return json.dumps(result.model_dump(mode="json"))
 
     cached = await cache_get_or_set("nearby", nearby_params, fetch_fn=_fetch_nearby, ttl=300)
@@ -143,11 +166,29 @@ async def map_endpoint(
     if min_lon >= max_lon or min_lat >= max_lat:
         raise HTTPException(status_code=422, detail="bbox min must be less than max")
 
-    map_params = {"bbox": bbox, "source": source, "place_type": place_type, "page_size": page_size, "cursor": cursor}
+    map_params = {
+        "bbox": bbox,
+        "source": source,
+        "place_type": place_type,
+        "page_size": page_size,
+        "cursor": cursor,
+    }
 
     async def _fetch_map() -> str:
-        items, total, next_cursor, has_more = await map_query_service(session, min_lon, min_lat, max_lon, max_lat, source, place_type, cursor=cursor, page_size=page_size)
-        result = CursorPaginatedResponse[EntityListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
+        items, total, next_cursor, has_more = await map_query_service(
+            session,
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+            source,
+            place_type,
+            cursor=cursor,
+            page_size=page_size,
+        )
+        result = CursorPaginatedResponse[EntityListItem](
+            results=items, total=total, next_cursor=next_cursor, has_more=has_more
+        )
         return json.dumps(result.model_dump(mode="json"))
 
     cached = await cache_get_or_set("map", map_params, fetch_fn=_fetch_map)
@@ -185,14 +226,26 @@ async def classifications_endpoint(
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
-    classif_params = {"entity_id": entity_id, "category": category, "value_code": value_code, "page_size": page_size, "cursor": cursor}
+    classif_params = {
+        "entity_id": entity_id,
+        "category": category,
+        "value_code": value_code,
+        "page_size": page_size,
+        "cursor": cursor,
+    }
 
     async def _fetch_classifications() -> str:
-        items, total, next_cursor, has_more = await list_classifications_service(session, entity_id, category, value_code, cursor=cursor, page_size=page_size)
-        result = CursorPaginatedResponse[ClassificationListItem](results=items, total=total, next_cursor=next_cursor, has_more=has_more)
+        items, total, next_cursor, has_more = await list_classifications_service(
+            session, entity_id, category, value_code, cursor=cursor, page_size=page_size
+        )
+        result = CursorPaginatedResponse[ClassificationListItem](
+            results=items, total=total, next_cursor=next_cursor, has_more=has_more
+        )
         return json.dumps(result.model_dump(mode="json"))
 
-    cached = await cache_get_or_set("classifications", classif_params, fetch_fn=_fetch_classifications)
+    cached = await cache_get_or_set(
+        "classifications", classif_params, fetch_fn=_fetch_classifications
+    )
     if cached:
         return CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(cached))
 
@@ -235,7 +288,9 @@ async def detail_endpoint(
 
     from dmo.models.schemas import OpenStatus
 
-    open_cached = await cache_get_or_set("open_status", detail_params, fetch_fn=_fetch_open_status, ttl=60)
+    open_cached = await cache_get_or_set(
+        "open_status", detail_params, fetch_fn=_fetch_open_status, ttl=60
+    )
     open_status: OpenStatus | None = None
     if open_cached and open_cached != "null":
         open_status = OpenStatus.model_validate(json.loads(open_cached))

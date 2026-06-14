@@ -1,4 +1,5 @@
 """Security tests: SQL injection, API key enforcement, input sanitization."""
+
 import pytest
 from httpx import AsyncClient
 
@@ -88,17 +89,13 @@ class TestSQLInjection:
     @pytest.mark.asyncio
     async def test_sql_injection_in_nearby_query(self, client: AsyncClient):
         """Nearby query with injection in source filter returns safe results."""
-        resp = await client.get(
-            "/nearby?lat=46.95&lon=7.45&radius_km=10&source=' OR '1'='1"
-        )
+        resp = await client.get("/nearby?lat=46.95&lon=7.45&radius_km=10&source=' OR '1'='1")
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
     async def test_sql_injection_in_map_query(self, client: AsyncClient):
         """Map query with injection in bbox returns safe results."""
-        resp = await client.get(
-            "/map?bbox=0,0,' OR '1'='1,1,1"
-        )
+        resp = await client.get("/map?bbox=0,0,' OR '1'='1,1,1")
         # Should return 422 for invalid bbox format, not execute SQL
         assert resp.status_code in (200, 422)
 

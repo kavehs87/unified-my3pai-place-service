@@ -11,10 +11,26 @@ from dmo.models.database import Classification, Entity, Media
 from dmo.models.schemas import ClassificationItem, EntityDetail, MediaItem, OpenStatus
 
 _ALLOWED_TAGS = [
-    "a", "b", "i", "strong", "em", "code", "pre",
-    "p", "br", "hr", "blockquote",
-    "h1", "h2", "h3", "h4", "h5", "h6",
-    "ul", "ol", "li",
+    "a",
+    "b",
+    "i",
+    "strong",
+    "em",
+    "code",
+    "pre",
+    "p",
+    "br",
+    "hr",
+    "blockquote",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "ul",
+    "ol",
+    "li",
 ]
 _ALLOWED_ATTRS = {
     "a": ["href"],
@@ -90,7 +106,9 @@ def transform_description(description: str | None, description_format: str | Non
             nodes = doc.get("content", []) if isinstance(doc, dict) else []
             return "".join(_prosemirror_to_html(n) for n in nodes)
         except (json.JSONDecodeError, TypeError):
-            return bleach.clean(description, tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRS, strip=True)
+            return bleach.clean(
+                description, tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRS, strip=True
+            )
     return description
 
 

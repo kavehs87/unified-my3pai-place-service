@@ -94,7 +94,11 @@ class TestProsemirrorToHtml:
         assert result == "<p>Hello world</p>"
 
     def test_heading_safe(self):
-        node = {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Title"}]}
+        node = {
+            "type": "heading",
+            "attrs": {"level": 2},
+            "content": [{"type": "text", "text": "Title"}],
+        }
         result = _prosemirror_to_html(node)
         assert result == "<h2>Title</h2>"
 
@@ -150,5 +154,7 @@ class TestTransformDescription:
         assert result == "raw text"
 
     def test_html_passthrough_data_uri_blocked(self):
-        result = transform_description('<a href="data:text/html,<script>XSS</script>">click</a>', "html")
+        result = transform_description(
+            '<a href="data:text/html,<script>XSS</script>">click</a>', "html"
+        )
         assert result is not None and "data:" not in result

@@ -1,4 +1,3 @@
-
 from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -36,6 +35,7 @@ async def nearby(
     cursor_filter = ""
     if cursor:
         from dmo.services.pagination import decode_cursor
+
         last_id, last_distance = decode_cursor(cursor)
         dist_expr = "(ST_Distance(location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography) / 1000.0)"
         cursor_filter = f" AND ({dist_expr} > :cursor_distance OR ({dist_expr} = :cursor_distance AND id > :cursor_id))"
@@ -58,7 +58,9 @@ async def nearby(
         LIMIT :limit
     """)
     rows_params: dict[str, object] = {
-        "lon": lon, "lat": lat, "radius_m": radius_m,
+        "lon": lon,
+        "lat": lat,
+        "radius_m": radius_m,
         "limit": fetch_size,
     }
     rows_params.update(params)
@@ -87,6 +89,7 @@ async def nearby(
     next_cursor: str | None = None
     if has_more and items:
         from dmo.services.pagination import encode_cursor
+
         last = items[-1]
         next_cursor = encode_cursor(last.id, row_distances[-1] or 0)
 
@@ -122,6 +125,7 @@ async def map_query(
     cursor_filter = ""
     if cursor:
         from dmo.services.pagination import decode_cursor
+
         last_id, _ = decode_cursor(cursor)
         cursor_filter = " AND id > :cursor_id"
         params["cursor_id"] = last_id
@@ -141,8 +145,10 @@ async def map_query(
         LIMIT :limit
     """)
     rows_params: dict[str, object] = {
-        "min_lon": min_lon, "min_lat": min_lat,
-        "max_lon": max_lon, "max_lat": max_lat,
+        "min_lon": min_lon,
+        "min_lat": min_lat,
+        "max_lon": max_lon,
+        "max_lat": max_lat,
         "limit": fetch_size,
     }
     rows_params.update(params)
@@ -166,6 +172,7 @@ async def map_query(
     next_cursor: str | None = None
     if has_more and items:
         from dmo.services.pagination import encode_cursor
+
         last = items[-1]
         next_cursor = encode_cursor(last.id, str(last.id))
 

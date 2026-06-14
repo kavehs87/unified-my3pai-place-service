@@ -28,11 +28,13 @@ async def lifespan(app: FastAPI):
     if not settings.api_key:
         raise ValueError("API_KEY environment variable is required")
     from dmo.db import get_engine
+
     get_engine()
     yield
     if _cache is not None:
         await _cache.close()
     from dmo.db import _engine
+
     if _engine is not None:
         await _engine.dispose()
 
@@ -106,9 +108,7 @@ async def timeout_middleware(request: Request, call_next):
     if request.url.path in ("/health", "/metrics", "/docs", "/redoc", "/openapi.json"):
         return await call_next(request)
     try:
-        return await asyncio.wait_for(
-            call_next(request), timeout=settings.request_timeout_seconds
-        )
+        return await asyncio.wait_for(call_next(request), timeout=settings.request_timeout_seconds)
     except TimeoutError:
         return JSONResponse(
             status_code=504,

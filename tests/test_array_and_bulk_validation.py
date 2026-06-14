@@ -26,55 +26,33 @@ class TestArrayFieldValidation:
 
     def test_secondary_types_max_length_exceeded(self):
         with pytest.raises(ValueError):
-            EntityCreate(
-                **_make_entity_data(
-                    secondary_types=["type"] * 101
-                )
-            )
+            EntityCreate(**_make_entity_data(secondary_types=["type"] * 101))
 
     def test_region_names_max_length_exceeded(self):
         with pytest.raises(ValueError):
-            EntityCreate(
-                **_make_entity_data(
-                    region_names=["region"] * 101
-                )
-            )
+            EntityCreate(**_make_entity_data(region_names=["region"] * 101))
 
     def test_secondary_types_valid(self):
-        entity = EntityCreate(
-            **_make_entity_data(
-                secondary_types=["museum", "gallery"]
-            )
-        )
+        entity = EntityCreate(**_make_entity_data(secondary_types=["museum", "gallery"]))
         assert entity.secondary_types == ["museum", "gallery"]
 
     def test_region_names_valid(self):
-        entity = EntityCreate(
-            **_make_entity_data(
-                region_names=["Zurich", "Switzerland"]
-            )
-        )
+        entity = EntityCreate(**_make_entity_data(region_names=["Zurich", "Switzerland"]))
         assert entity.region_names == ["Zurich", "Switzerland"]
 
     def test_update_secondary_types_max_length_exceeded(self):
         with pytest.raises(ValueError):
-            EntityUpdate(
-                secondary_types=["type"] * 101
-            )
+            EntityUpdate(secondary_types=["type"] * 101)
 
     def test_update_region_names_max_length_exceeded(self):
         with pytest.raises(ValueError):
-            EntityUpdate(
-                region_names=["region"] * 101
-            )
+            EntityUpdate(region_names=["region"] * 101)
 
     @pytest.mark.asyncio
     async def test_create_rejects_long_secondary_types(self, client: AsyncClient, session):
         resp = await client.post(
             "/entities",
-            json=_make_entity_data(
-                secondary_types=["type"] * 101
-            ),
+            json=_make_entity_data(secondary_types=["type"] * 101),
             headers=WRITE_HEADERS,
         )
         assert resp.status_code == 422
@@ -83,9 +61,7 @@ class TestArrayFieldValidation:
     async def test_create_rejects_long_region_names(self, client: AsyncClient, session):
         resp = await client.post(
             "/entities",
-            json=_make_entity_data(
-                region_names=["region"] * 101
-            ),
+            json=_make_entity_data(region_names=["region"] * 101),
             headers=WRITE_HEADERS,
         )
         assert resp.status_code == 422

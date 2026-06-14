@@ -29,7 +29,11 @@ class Entity(SQLModel, table=True):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")))
+    id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+        )
+    )
     source: str = Field(sa_column=Column(String(100), nullable=False))
     source_id: str = Field(sa_column=Column(String(500), nullable=False))
     source_url: str | None = Field(default=None, sa_column=Column(String(2048)))
@@ -48,7 +52,9 @@ class Entity(SQLModel, table=True):
     collection_name: str | None = Field(default=None, sa_column=Column(String(500)))
     collection_slug: str | None = Field(default=None, sa_column=Column(String(500)))
 
-    location: WKBElement | None = Field(default=None, sa_column=Column(Geography(geometry_type="POINT", srid=4326)))
+    location: WKBElement | None = Field(
+        default=None, sa_column=Column(Geography(geometry_type="POINT", srid=4326))
+    )
     latitude: float | None = Field(default=None, sa_column=Column(Float))
     longitude: float | None = Field(default=None, sa_column=Column(Float))
     country: str | None = Field(default=None, sa_column=Column(String(10)))
@@ -65,7 +71,9 @@ class Entity(SQLModel, table=True):
 
     license: str | None = Field(default=None, sa_column=Column(String(500)))
     access_type: str | None = Field(default=None, sa_column=Column(String(32)))
-    is_reusable: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("FALSE")))
+    is_reusable: bool = Field(
+        default=False, sa_column=Column(Boolean, server_default=text("FALSE"))
+    )
 
     is_free: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("FALSE")))
     is_open: bool | None = Field(default=None, sa_column=Column(Boolean))
@@ -87,19 +95,29 @@ class Entity(SQLModel, table=True):
     price_max: float | None = Field(default=None, sa_column=Column(Numeric(12, 2)))
     price_level: int | None = Field(default=None, sa_column=Column(Integer))
 
-    is_barrier_free: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("FALSE")))
+    is_barrier_free: bool = Field(
+        default=False, sa_column=Column(Boolean, server_default=text("FALSE"))
+    )
     wheelchair_accessible: bool | None = Field(default=None, sa_column=Column(Boolean))
 
-    is_featured: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("FALSE")))
+    is_featured: bool = Field(
+        default=False, sa_column=Column(Boolean, server_default=text("FALSE"))
+    )
     favorite_count: int = Field(default=0, sa_column=Column(Integer, server_default=text("0")))
     rating: float | None = Field(default=None, sa_column=Column(Numeric(3, 1)))
     reviews_count: int | None = Field(default=None, sa_column=Column(Integer))
 
-    attributes: dict = Field(default_factory=dict, sa_column=Column(JSONB, server_default=text("'{}'")))
+    attributes: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, server_default=text("'{}'"))
+    )
 
     is_active: bool = Field(default=True, sa_column=Column(Boolean, server_default=text("TRUE")))
-    imported_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()")))
-    updated_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()")))
+    imported_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
+    updated_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
 
     __table_args__ = (
         UniqueConstraint("source", "source_id", name="uq_entity_source_source_id"),
@@ -109,8 +127,18 @@ class Entity(SQLModel, table=True):
         Index("idx_entity_collection_active", "collection_id", "is_active"),
         Index("idx_entity_attributes", "attributes", postgresql_using="gin"),
         Index("idx_entity_rating", "rating", postgresql_where="rating IS NOT NULL"),
-        Index("idx_entity_name_trgm", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
-        Index("idx_entity_summary_trgm", "summary", postgresql_using="gin", postgresql_ops={"summary": "gin_trgm_ops"}),
+        Index(
+            "idx_entity_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_entity_summary_trgm",
+            "summary",
+            postgresql_using="gin",
+            postgresql_ops={"summary": "gin_trgm_ops"},
+        ),
         Index("idx_entity_slug", "slug", postgresql_where="slug IS NOT NULL"),
     )
 
@@ -118,9 +146,17 @@ class Entity(SQLModel, table=True):
 class Media(SQLModel, table=True):
     __tablename__ = "media"
 
-    id: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
-    entity_id: UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False))
-    media_type: str = Field(default="image", sa_column=Column(String(20), server_default=text("'image'")))
+    id: int | None = Field(
+        default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True)
+    )
+    entity_id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+        )
+    )
+    media_type: str = Field(
+        default="image", sa_column=Column(String(20), server_default=text("'image'"))
+    )
     url: str = Field(sa_column=Column(String(2048), nullable=False))
     name: str | None = Field(default=None, sa_column=Column(String(255)))
     keywords: str | None = Field(default=None, sa_column=Column(Text))
@@ -130,7 +166,9 @@ class Media(SQLModel, table=True):
     height: int | None = Field(default=None, sa_column=Column(Integer))
     encoding_format: str | None = Field(default=None, sa_column=Column(String(50)))
     sort_order: int = Field(default=0, sa_column=Column(Integer, server_default=text("0")))
-    attributions: list = Field(default_factory=list, sa_column=Column(JSONB, server_default=text("'[]'")))
+    attributions: list = Field(
+        default_factory=list, sa_column=Column(JSONB, server_default=text("'[]'"))
+    )
     poster_url: str | None = Field(default=None, sa_column=Column(String(2048)))
     is_muted: bool | None = Field(default=None, sa_column=Column(Boolean))
     is_active: bool = Field(default=True, sa_column=Column(Boolean, server_default=text("TRUE")))
@@ -144,8 +182,14 @@ class Media(SQLModel, table=True):
 class Classification(SQLModel, table=True):
     __tablename__ = "classifications"
 
-    id: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
-    entity_id: UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False))
+    id: int | None = Field(
+        default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True)
+    )
+    entity_id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+        )
+    )
     category: str = Field(sa_column=Column(String(100), nullable=False))
     value_code: str = Field(sa_column=Column(String(100), nullable=False))
     value_title: str | None = Field(default=None, sa_column=Column(String(255)))
@@ -162,8 +206,20 @@ class Route(SQLModel, table=True):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    id: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
-    entity_id: UUID = Field(sa_column=Column(PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False))
-    geometry: WKBElement | None = Field(default=None, sa_column=Column(Geometry(geometry_type="GEOMETRY", srid=4326)))
-    elevation_profile: list = Field(default_factory=list, sa_column=Column(JSONB, server_default=text("'[]'")))
-    fetched_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()")))
+    id: int | None = Field(
+        default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True)
+    )
+    entity_id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+        )
+    )
+    geometry: WKBElement | None = Field(
+        default=None, sa_column=Column(Geometry(geometry_type="GEOMETRY", srid=4326))
+    )
+    elevation_profile: list = Field(
+        default_factory=list, sa_column=Column(JSONB, server_default=text("'[]'"))
+    )
+    fetched_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )

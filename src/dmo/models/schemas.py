@@ -210,19 +210,19 @@ class EntityCreate(BaseModel):
     attributes: dict = {}
     is_active: bool = True
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def strip_strings(cls, data: Any) -> Any:
         if isinstance(data, dict):
             return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
         return data
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_coordinates(self):
         has_lat = self.latitude is not None
         has_lon = self.longitude is not None
         if has_lat != has_lon:
-            raise ValueError('Either provide both latitude and longitude, or neither')
+            raise ValueError("Either provide both latitude and longitude, or neither")
         return self
 
 
@@ -282,19 +282,19 @@ class EntityUpdate(BaseModel):
     attributes: dict | None = None
     is_active: bool | None = None
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def strip_strings(cls, data: Any) -> Any:
         if isinstance(data, dict):
             return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
         return data
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_coordinates(self):
         has_lat = self.latitude is not None
         has_lon = self.longitude is not None
         if has_lat != has_lon:
-            raise ValueError('Either provide both latitude and longitude, or neither')
+            raise ValueError("Either provide both latitude and longitude, or neither")
         return self
 
 

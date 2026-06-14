@@ -134,7 +134,9 @@ async def test_update_entity_only_longitude_returns_422(client: AsyncClient, ses
 
 
 @pytest.mark.asyncio
-async def test_update_entity_both_coordinates_returns_200(client: AsyncClient, session: AsyncSession):
+async def test_update_entity_both_coordinates_returns_200(
+    client: AsyncClient, session: AsyncSession
+):
     data = _make_entity_data(source_id="upd-test-3")
     resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201

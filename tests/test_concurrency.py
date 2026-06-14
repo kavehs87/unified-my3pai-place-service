@@ -1,4 +1,5 @@
 """Concurrency tests: race conditions, concurrent read/write."""
+
 import asyncio
 
 import pytest
@@ -148,8 +149,6 @@ class TestConcurrentDetail:
         assert create_resp.status_code == 201
 
         # Then make concurrent detail requests
-        results = await asyncio.gather(
-            *[client.get("/test/conc-detail-001") for _ in range(10)]
-        )
+        results = await asyncio.gather(*[client.get("/test/conc-detail-001") for _ in range(10)])
         for resp in results:
             assert resp.status_code in (200, 404)

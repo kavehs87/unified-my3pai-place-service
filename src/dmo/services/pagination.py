@@ -29,4 +29,4 @@ def decode_cursor(cursor: str) -> tuple[UUID | int, str | float | int]:
     try:
         return int(raw_id), sort_key
     except (ValueError, AttributeError):
-        return raw_id, sort_key
+        raise AppError("Invalid cursor format", "InvalidCursor", 400)

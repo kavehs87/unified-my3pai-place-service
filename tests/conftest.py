@@ -13,7 +13,9 @@ from dmo.services.cache import cache_get as _orig_cache_get
 from dmo.services.cache import cache_get_or_set as _orig_cache_get_or_set
 from dmo.services.cache import cache_set as _orig_cache_set
 
-TEST_DB_URL = os.environ.get("TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo")
+TEST_DB_URL = os.environ.get(
+    "TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -34,7 +36,9 @@ def _disable_cache(request):
         return None
 
     # Don't patch cache_get_or_set for stampede tests
-    is_stampede = "test_cache_stampede" in (request.node.module.__name__ if request.node.module else "")
+    is_stampede = "test_cache_stampede" in (
+        request.node.module.__name__ if request.node.module else ""
+    )
 
     cache_module.cache_get = _no_op_get
     cache_module.cache_set = _no_op_set

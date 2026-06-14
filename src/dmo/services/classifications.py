@@ -38,6 +38,7 @@ async def list_classifications(
     if cursor:
         from dmo.exceptions import AppError
         from dmo.services.pagination import decode_cursor
+
         last_id, sort_key = decode_cursor(cursor)
         try:
             sort_dict = json.loads(str(sort_key))
@@ -103,8 +104,11 @@ async def list_classifications(
     next_cursor: str | None = None
     if has_more and items:
         from dmo.services.pagination import encode_cursor
+
         last = rows[-1]
-        next_cursor = encode_cursor(last["id"], json.dumps({"c": last["category"], "v": last["value_code"]}))
+        next_cursor = encode_cursor(
+            last["id"], json.dumps({"c": last["category"], "v": last["value_code"]})
+        )
 
     return items, total, next_cursor, has_more
 

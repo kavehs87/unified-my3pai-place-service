@@ -11,7 +11,9 @@ from dmo.models.database import Entity
 
 class TestOpenStatusCacheSeparation:
     @pytest.mark.asyncio
-    async def test_detail_response_includes_open_status(self, client: AsyncClient, session: AsyncSession):
+    async def test_detail_response_includes_open_status(
+        self, client: AsyncClient, session: AsyncSession
+    ):
         entity = Entity(
             id=uuid4(),
             source="test",
@@ -29,7 +31,9 @@ class TestOpenStatusCacheSeparation:
         assert data["is_open"] is True
 
     @pytest.mark.asyncio
-    async def test_detail_response_none_open_status(self, client: AsyncClient, session: AsyncSession):
+    async def test_detail_response_none_open_status(
+        self, client: AsyncClient, session: AsyncSession
+    ):
         entity = Entity(
             id=uuid4(),
             source="test",

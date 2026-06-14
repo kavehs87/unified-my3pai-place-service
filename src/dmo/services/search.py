@@ -1,4 +1,3 @@
-
 from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -39,6 +38,7 @@ async def search(
     cursor_filter = ""
     if cursor:
         from dmo.services.pagination import decode_cursor
+
         last_id, last_name = decode_cursor(cursor)
         cursor_filter = " AND (entities.name > :cursor_name OR (entities.name = :cursor_name AND entities.id > :cursor_id))"
         params["cursor_name"] = last_name
@@ -78,6 +78,7 @@ async def search(
     next_cursor: str | None = None
     if has_more and items:
         from dmo.services.pagination import encode_cursor
+
         last = items[-1]
         next_cursor = encode_cursor(last.id, last.name)
 

@@ -42,7 +42,10 @@ async def test_stampede_single_fetch_on_concurrent_miss():
     with patch.object(cache_module, "get_cache", new_callable=AsyncMock) as mock_get_cache:
         mock_get_cache.return_value = fake_client
 
-        tasks = [cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn) for _ in range(10)]
+        tasks = [
+            cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
+            for _ in range(10)
+        ]
         await asyncio.gather(*tasks)
 
     assert fetch_count == 1
@@ -127,7 +130,10 @@ async def test_stampede_waiter_gets_cached_result():
     with patch.object(cache_module, "get_cache", new_callable=AsyncMock) as mock_get_cache:
         mock_get_cache.return_value = fake_client
 
-        tasks = [cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn) for _ in range(5)]
+        tasks = [
+            cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
+            for _ in range(5)
+        ]
         results = await asyncio.gather(*tasks)
 
     assert fetch_count == 1
@@ -223,7 +229,7 @@ async def test_stampede_waiter_retry_matches_lock_timeout():
     # Waiter that simulates lock held (SET NX fails), cache stays empty through all retries
     fake_client = AsyncMock()
     fake_client.get = AsyncMock(return_value=None)  # never populated
-    fake_client.set = AsyncMock(return_value=False)   # can't acquire lock
+    fake_client.set = AsyncMock(return_value=False)  # can't acquire lock
 
     with patch.object(cache_module, "get_cache", new_callable=AsyncMock) as mock_get_cache:
         mock_get_cache.return_value = fake_client

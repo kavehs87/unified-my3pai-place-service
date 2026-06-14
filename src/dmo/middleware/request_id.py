@@ -10,7 +10,12 @@ logger = structlog.get_logger()
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        client_request_id = request.headers.get("X-Request-ID", "")
+        try:
+            uuid.UUID(client_request_id)
+        except (ValueError, AttributeError):
+            client_request_id = ""
+        request_id = client_request_id or str(uuid.uuid4())
         request.state.request_id = request_id
         structlog.contextvars.bind_contextvars(request_id=request_id)
 

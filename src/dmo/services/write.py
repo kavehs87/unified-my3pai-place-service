@@ -44,13 +44,15 @@ async def invalidate_all_caches() -> None:
 async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat: float) -> None:
     """Set PostGIS location column for a single entity via raw SQL."""
     await session.execute(
-        text("UPDATE entities SET location = ST_SetSRID(ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid").bindparams(
-            lat=lat, lon=lon, eid=entity_id
-        )
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid"
+        ).bindparams(lat=lat, lon=lon, eid=entity_id)
     )
 
 
-async def _set_locations_batch(session: AsyncSession, updates: list[tuple[UUID, float, float]]) -> None:
+async def _set_locations_batch(
+    session: AsyncSession, updates: list[tuple[UUID, float, float]]
+) -> None:
     """Set PostGIS location column for multiple entities via raw SQL."""
     if not updates:
         return
@@ -250,16 +252,19 @@ async def bulk_upsert(
     if not entities:
         return []
 
+    # Scope advisory lock by source so different sources don't serialize
+    # (all entities in a single bulk call share the same source by convention)
+    source = entities[0].source
+    lock_id = hash(source) % (2**31)
+
     # Serialize bulk operations to prevent race condition
     await session.execute(
-        text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=1234567890)
+        text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=lock_id)
     )
 
     source_ids = [(d.source, d.source_id) for d in entities]
 
-    existing_stmt = select(Entity).where(
-        tuple_(Entity.source, Entity.source_id).in_(source_ids)
-    )
+    existing_stmt = select(Entity).where(tuple_(Entity.source, Entity.source_id).in_(source_ids))
     existing_rows = (await session.exec(existing_stmt)).all()
     existing_map = {(e.source, e.source_id): e for e in existing_rows}
 
@@ -362,14 +367,18 @@ async def bulk_upsert(
         await session.rollback()
         # Re-acquire advisory lock — rollback released the xact lock
         await session.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=1234567890)
+            text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=lock_id)
         )
         # Re-check which entities now exist (concurrent bulk may have inserted them)
-        rechecked = (await session.exec(select(Entity).where(
-            tuple_(Entity.source, Entity.source_id).in_(
-                [(e.source, e.source_id) for e in new_entities]
+        rechecked = (
+            await session.exec(
+                select(Entity).where(
+                    tuple_(Entity.source, Entity.source_id).in_(
+                        [(e.source, e.source_id) for e in new_entities]
+                    )
+                )
             )
-        ))).all()
+        ).all()
         rechecked_map = {(e.source, e.source_id): e for e in rechecked}
 
         still_new: list[Entity] = []
@@ -501,7 +510,9 @@ async def delete_classification(
     classification_id: int,
 ) -> bool:
     """Soft-delete classification by ID. Returns False if not found."""
-    stmt = select(Classification).where(Classification.id == classification_id, col(Classification.is_active))
+    stmt = select(Classification).where(
+        Classification.id == classification_id, col(Classification.is_active)
+    )
     classif = (await session.exec(stmt)).first()
     if not classif:
         return False

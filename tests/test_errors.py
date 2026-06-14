@@ -52,12 +52,16 @@ async def test_409_create_entity_conflict(client: AsyncClient, session: AsyncSes
     session.add(entity)
     await session.commit()
 
-    resp = await client.post("/entities", json={
-        "source": "test",
-        "source_id": "conflict-test",
-        "name": "Duplicate",
-        "place_type": "poi",
-    }, headers=WRITE_HEADERS)
+    resp = await client.post(
+        "/entities",
+        json={
+            "source": "test",
+            "source_id": "conflict-test",
+            "name": "Duplicate",
+            "place_type": "poi",
+        },
+        headers=WRITE_HEADERS,
+    )
     assert resp.status_code == 409
     data = resp.json()
     assert data["error"] == "Conflict"
@@ -66,9 +70,9 @@ async def test_409_create_entity_conflict(client: AsyncClient, session: AsyncSes
 
 @pytest.mark.asyncio
 async def test_409_update_entity_not_found(client: AsyncClient):
-    resp = await client.put("/nonexistent/source-999", json={
-        "name": "Updated Name"
-    }, headers=WRITE_HEADERS)
+    resp = await client.put(
+        "/nonexistent/source-999", json={"name": "Updated Name"}, headers=WRITE_HEADERS
+    )
     assert resp.status_code == 404
     data = resp.json()
     assert data["error"] == "NotFound"
@@ -138,34 +142,52 @@ async def test_request_id_in_error_response(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_request_id_header_propagated(client: AsyncClient):
-    custom_id = "my-custom-request-id-123"
-    resp = await client.get(
-        "/unknown/source-123",
-        headers={"X-Request-ID": custom_id}
-    )
+    custom_id = "550e8400-e29b-41d4-a716-446655440000"
+    resp = await client.get("/unknown/source-123", headers={"X-Request-ID": custom_id})
     assert resp.status_code == 404
     data = resp.json()
     assert data["request_id"] == custom_id
 
 
 @pytest.mark.asyncio
+async def test_request_id_header_invalid_uuid_generates_new_id(client: AsyncClient):
+    """Non-UUID X-Request-ID should be rejected and a new UUID generated."""
+    resp = await client.get("/unknown/source-123", headers={"X-Request-ID": "not-a-uuid"})
+    assert resp.status_code == 404
+    data = resp.json()
+    request_id = data["request_id"]
+    # Should be a valid UUID (not the invalid string we sent)
+    from uuid import UUID
+    UUID(request_id)
+    assert request_id != "not-a-uuid"
+
+
+@pytest.mark.asyncio
 async def test_404_create_media_entity_not_found(client: AsyncClient):
-    resp = await client.post("/media", json={
-        "entity_id": "00000000-0000-0000-0000-000000000000",
-        "url": "https://example.com/image.jpg",
-        "media_type": "image",
-    }, headers=WRITE_HEADERS)
+    resp = await client.post(
+        "/media",
+        json={
+            "entity_id": "00000000-0000-0000-0000-000000000000",
+            "url": "https://example.com/image.jpg",
+            "media_type": "image",
+        },
+        headers=WRITE_HEADERS,
+    )
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_404_create_classification_entity_not_found(client: AsyncClient):
-    resp = await client.post("/classifications", json={
-        "entity_id": "00000000-0000-0000-0000-000000000000",
-        "category": "accessibility",
-        "value_code": "wheelchair",
-        "value_title": "Wheelchair accessible",
-    }, headers=WRITE_HEADERS)
+    resp = await client.post(
+        "/classifications",
+        json={
+            "entity_id": "00000000-0000-0000-0000-000000000000",
+            "category": "accessibility",
+            "value_code": "wheelchair",
+            "value_title": "Wheelchair accessible",
+        },
+        headers=WRITE_HEADERS,
+    )
     assert resp.status_code == 404
 
 
@@ -228,6 +250,7 @@ async def test_400_invalid_base64_cursor(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_400_invalid_json_cursor(client: AsyncClient):
     import base64
+
     invalid_json = base64.urlsafe_b64encode(b"not-json").decode()
     resp = await client.get(f"/search?q=hotel&cursor={invalid_json}")
     assert resp.status_code == 400
@@ -239,6 +262,7 @@ async def test_400_invalid_json_cursor(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_400_cursor_missing_id_key(client: AsyncClient):
     import base64
+
     missing_id = base64.urlsafe_b64encode(b'{"sort": "value"}').decode()
     resp = await client.get(f"/search?q=hotel&cursor={missing_id}")
     assert resp.status_code == 400
@@ -250,6 +274,7 @@ async def test_400_cursor_missing_id_key(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_400_cursor_missing_sort_key(client: AsyncClient):
     import base64
+
     missing_sort = base64.urlsafe_b64encode(b'{"id": "abc123"}').decode()
     resp = await client.get(f"/search?q=hotel&cursor={missing_sort}")
     assert resp.status_code == 400
@@ -279,6 +304,7 @@ async def test_400_map_invalid_cursor(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_400_classifications_invalid_nested_cursor(client: AsyncClient):
     import base64
+
     bad_sort = base64.urlsafe_b64encode(b'{"id": "abc123", "sort": "not-json"}').decode()
     resp = await client.get(f"/classifications?cursor={bad_sort}")
     assert resp.status_code == 400

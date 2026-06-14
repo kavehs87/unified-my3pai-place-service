@@ -8,7 +8,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from dmo.models.database import Entity
 
 
-def _make_entity(source: str = "test", name: str = "Test POI", place_type: str = "poi", lat: float = 46.95, lon: float = 7.45):
+def _make_entity(
+    source: str = "test",
+    name: str = "Test POI",
+    place_type: str = "poi",
+    lat: float = 46.95,
+    lon: float = 7.45,
+):
     return Entity(
         id=uuid4(),
         source=source,
@@ -26,9 +32,9 @@ async def _insert_with_location(session: AsyncSession, entity: Entity):
     await session.commit()
     await session.refresh(entity)
     await session.execute(
-        text("UPDATE entities SET location = ST_SetSRID(ST_MakePoint(:lon, :lat), 4326) WHERE id = :id").bindparams(
-            lat=entity.latitude, lon=entity.longitude, id=entity.id
-        )
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(:lon, :lat), 4326) WHERE id = :id"
+        ).bindparams(lat=entity.latitude, lon=entity.longitude, id=entity.id)
     )
     await session.commit()
 

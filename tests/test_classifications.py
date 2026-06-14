@@ -193,8 +193,16 @@ async def test_classifications_pagination(client: AsyncClient, session: AsyncSes
     await session.flush()
     eid = str(entity.id)
 
-    for code, title in [("wheelchair", "Wheelchair"), ("elevator", "Elevator"), ("ramp", "Ramp"), ("audio", "Audio"), ("braille", "Braille")]:
-        c = Classification(entity_id=entity.id, category="accessibility", value_code=code, value_title=title)
+    for code, title in [
+        ("wheelchair", "Wheelchair"),
+        ("elevator", "Elevator"),
+        ("ramp", "Ramp"),
+        ("audio", "Audio"),
+        ("braille", "Braille"),
+    ]:
+        c = Classification(
+            entity_id=entity.id, category="accessibility", value_code=code, value_title=title
+        )
         session.add(c)
     await session.commit()
 
@@ -221,8 +229,16 @@ async def test_classifications_cursor_pagination(client: AsyncClient, session: A
     await session.flush()
     eid = str(entity.id)
 
-    for code, title in [("wheelchair", "Wheelchair"), ("elevator", "Elevator"), ("ramp", "Ramp"), ("audio", "Audio"), ("braille", "Braille")]:
-        c = Classification(entity_id=entity.id, category="accessibility", value_code=code, value_title=title)
+    for code, title in [
+        ("wheelchair", "Wheelchair"),
+        ("elevator", "Elevator"),
+        ("ramp", "Ramp"),
+        ("audio", "Audio"),
+        ("braille", "Braille"),
+    ]:
+        c = Classification(
+            entity_id=entity.id, category="accessibility", value_code=code, value_title=title
+        )
         session.add(c)
     await session.commit()
 

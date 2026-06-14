@@ -140,6 +140,7 @@ async def test_create_media(client: AsyncClient, session: AsyncSession):
 @pytest.mark.asyncio
 async def test_create_media_entity_not_found(client: AsyncClient, session: AsyncSession):
     import uuid
+
     media_data = {
         "entity_id": str(uuid.uuid4()),
         "media_type": "image",
@@ -198,6 +199,7 @@ async def test_create_classification(client: AsyncClient, session: AsyncSession)
 @pytest.mark.asyncio
 async def test_create_classification_entity_not_found(client: AsyncClient, session: AsyncSession):
     import uuid
+
     classif_data = {
         "entity_id": str(uuid.uuid4()),
         "category": "tourism",
@@ -212,8 +214,12 @@ async def test_bulk_upsert_location_accuracy(client: AsyncClient, session: Async
     """Verify bulk upsert sets geography column correctly for diverse coordinates."""
     entities = [
         _make_entity_data(source_id="loc-001", name="Zurich", latitude=47.3769, longitude=8.5417),
-        _make_entity_data(source_id="loc-002", name="New York", latitude=40.7128, longitude=-74.0060),
-        _make_entity_data(source_id="loc-003", name="Sydney", latitude=-33.8688, longitude=151.2093),
+        _make_entity_data(
+            source_id="loc-002", name="New York", latitude=40.7128, longitude=-74.0060
+        ),
+        _make_entity_data(
+            source_id="loc-003", name="Sydney", latitude=-33.8688, longitude=151.2093
+        ),
         _make_entity_data(source_id="loc-004", name="Equator", latitude=0.0, longitude=0.0),
     ]
     resp = await client.post("/entities/bulk", json=entities, headers=WRITE_HEADERS)
@@ -222,18 +228,23 @@ async def test_bulk_upsert_location_accuracy(client: AsyncClient, session: Async
     assert len(results) == 4
 
     from sqlmodel import text as sql_text
+
     for e in entities:
         row = await session.exec(
-            sql_text("SELECT ST_AsText(location) FROM entities WHERE source = :src AND source_id = :sid").bindparams(
-                src=e["source"], sid=e["source_id"]
-            )
+            sql_text(
+                "SELECT ST_AsText(location) FROM entities WHERE source = :src AND source_id = :sid"
+            ).bindparams(src=e["source"], sid=e["source_id"])
         )
         loc = row.scalar_one_or_none()
         assert loc is not None, f"Location NULL for {e['source_id']}"
         # ST_AsText outputs "POINT(lon lat)" — parse and compare as floats
         coords = loc.replace("POINT(", "").replace(")", "").split()
-        assert float(coords[0]) == pytest.approx(e["longitude"], abs=1e-4), f"Wrong longitude for {e['source_id']}: {loc}"
-        assert float(coords[1]) == pytest.approx(e["latitude"], abs=1e-4), f"Wrong latitude for {e['source_id']}: {loc}"
+        assert float(coords[0]) == pytest.approx(e["longitude"], abs=1e-4), (
+            f"Wrong longitude for {e['source_id']}: {loc}"
+        )
+        assert float(coords[1]) == pytest.approx(e["latitude"], abs=1e-4), (
+            f"Wrong latitude for {e['source_id']}: {loc}"
+        )
 
 
 @pytest.mark.asyncio
@@ -241,21 +252,31 @@ async def test_bulk_upsert_location_update_existing(client: AsyncClient, session
     """Verify bulk upsert updates location on existing entities."""
     from sqlmodel import text as sql_text
 
-    data = _make_entity_data(source_id="loc-upd-001", name="Original", latitude=46.95, longitude=7.45)
+    data = _make_entity_data(
+        source_id="loc-upd-001", name="Original", latitude=46.95, longitude=7.45
+    )
     resp = await client.post("/entities", json=data, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     row = await session.exec(
-        sql_text("SELECT ST_AsText(location) FROM entities WHERE source = 'test' AND source_id = 'loc-upd-001'")
+        sql_text(
+            "SELECT ST_AsText(location) FROM entities WHERE source = 'test' AND source_id = 'loc-upd-001'"
+        )
     )
     assert "7.45" in row.scalar_one_or_none()
 
-    entities = [_make_entity_data(source_id="loc-upd-001", name="Updated", latitude=47.3769, longitude=8.5417)]
+    entities = [
+        _make_entity_data(
+            source_id="loc-upd-001", name="Updated", latitude=47.3769, longitude=8.5417
+        )
+    ]
     resp = await client.post("/entities/bulk", json=entities, headers=WRITE_HEADERS)
     assert resp.status_code == 201
 
     row = await session.exec(
-        sql_text("SELECT ST_AsText(location) FROM entities WHERE source = 'test' AND source_id = 'loc-upd-001'")
+        sql_text(
+            "SELECT ST_AsText(location) FROM entities WHERE source = 'test' AND source_id = 'loc-upd-001'"
+        )
     )
     loc = row.scalar_one_or_none()
     assert "8.5417" in loc and "47.3769" in loc, f"Location not updated: {loc}"
@@ -265,6 +286,7 @@ async def test_bulk_upsert_location_update_existing(client: AsyncClient, session
 async def test_set_locations_batch_empty(session: AsyncSession):
     """Verify _set_locations_batch handles empty list without error."""
     from dmo.services.write import _set_locations_batch
+
     await _set_locations_batch(session, [])
 
 
@@ -318,8 +340,28 @@ async def test_bulk_upsert_concurrent_no_conflict(engine):
 
     async_session = async_sessionmaker(engine, class_=AsyncSession)
 
-    batch_a = [EntityCreate(source="test", source_id="concurrent-shared", name="Batch A", place_type="poi", latitude=46.95, longitude=7.45, country="CH")]
-    batch_b = [EntityCreate(source="test", source_id="concurrent-shared", name="Batch B", place_type="poi", latitude=46.95, longitude=7.45, country="CH")]
+    batch_a = [
+        EntityCreate(
+            source="test",
+            source_id="concurrent-shared",
+            name="Batch A",
+            place_type="poi",
+            latitude=46.95,
+            longitude=7.45,
+            country="CH",
+        )
+    ]
+    batch_b = [
+        EntityCreate(
+            source="test",
+            source_id="concurrent-shared",
+            name="Batch B",
+            place_type="poi",
+            latitude=46.95,
+            longitude=7.45,
+            country="CH",
+        )
+    ]
 
     async def upsert_a():
         async with async_session() as s:
@@ -356,12 +398,14 @@ async def test_bulk_upsert_large_batch_uses_full_cache_invalidation(engine):
 
     entities = []
     for i in range(25):
-        entities.append(EntityCreate(
-            source="test_bulk_cache",
-            source_id=f"cache_test_{i}",
-            name=f"Bulk Cache Entity {i}",
-            place_type="point_of_interest",
-        ))
+        entities.append(
+            EntityCreate(
+                source="test_bulk_cache",
+                source_id=f"cache_test_{i}",
+                name=f"Bulk Cache Entity {i}",
+                place_type="point_of_interest",
+            )
+        )
 
     invalidation_calls = []
 
@@ -371,15 +415,17 @@ async def test_bulk_upsert_large_batch_uses_full_cache_invalidation(engine):
     async def fake_invalidate_entity(eid):
         invalidation_calls.append(("entity", eid))
 
-    with patch.object(write_module, "invalidate_all_caches", fake_invalidate_all):
-        with patch.object(write_module, "invalidate_entity_caches", fake_invalidate_entity):
-            async with async_session() as session:
-                await session.exec(sql_text("DELETE FROM routes"))
-                await session.exec(sql_text("DELETE FROM classifications"))
-                await session.exec(sql_text("DELETE FROM media"))
-                await session.exec(sql_text("DELETE FROM entities"))
-                await session.commit()
-                await bulk_upsert(session, entities)
+    with (
+        patch.object(write_module, "invalidate_all_caches", fake_invalidate_all),
+        patch.object(write_module, "invalidate_entity_caches", fake_invalidate_entity),
+    ):
+        async with async_session() as session:
+            await session.exec(sql_text("DELETE FROM routes"))
+            await session.exec(sql_text("DELETE FROM classifications"))
+            await session.exec(sql_text("DELETE FROM media"))
+            await session.exec(sql_text("DELETE FROM entities"))
+            await session.commit()
+            await bulk_upsert(session, entities)
 
     assert len(invalidation_calls) == 1
     assert invalidation_calls[0] == "all"
@@ -402,12 +448,14 @@ async def test_bulk_upsert_small_batch_uses_per_entity_invalidation(engine):
 
     entities = []
     for i in range(5):
-        entities.append(EntityCreate(
-            source="test_bulk_small",
-            source_id=f"small_cache_{i}",
-            name=f"Small Bulk Entity {i}",
-            place_type="point_of_interest",
-        ))
+        entities.append(
+            EntityCreate(
+                source="test_bulk_small",
+                source_id=f"small_cache_{i}",
+                name=f"Small Bulk Entity {i}",
+                place_type="point_of_interest",
+            )
+        )
 
     invalidation_calls = []
 
@@ -417,15 +465,17 @@ async def test_bulk_upsert_small_batch_uses_per_entity_invalidation(engine):
     async def fake_invalidate_entity(eid):
         invalidation_calls.append(("entity", eid))
 
-    with patch.object(write_module, "invalidate_all_caches", fake_invalidate_all):
-        with patch.object(write_module, "invalidate_entity_caches", fake_invalidate_entity):
-            async with async_session() as session:
-                await session.exec(sql_text("DELETE FROM routes"))
-                await session.exec(sql_text("DELETE FROM classifications"))
-                await session.exec(sql_text("DELETE FROM media"))
-                await session.exec(sql_text("DELETE FROM entities"))
-                await session.commit()
-                await bulk_upsert(session, entities)
+    with (
+        patch.object(write_module, "invalidate_all_caches", fake_invalidate_all),
+        patch.object(write_module, "invalidate_entity_caches", fake_invalidate_entity),
+    ):
+        async with async_session() as session:
+            await session.exec(sql_text("DELETE FROM routes"))
+            await session.exec(sql_text("DELETE FROM classifications"))
+            await session.exec(sql_text("DELETE FROM media"))
+            await session.exec(sql_text("DELETE FROM entities"))
+            await session.commit()
+            await bulk_upsert(session, entities)
 
     assert len(invalidation_calls) == 5
     assert all(isinstance(c, tuple) and c[0] == "entity" for c in invalidation_calls)
