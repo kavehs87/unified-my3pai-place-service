@@ -10,6 +10,13 @@ from dmo.services.cache import get_cache
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
+    def _get_client_ip(self, request: Request) -> str:
+        if settings.trust_proxy_headers:
+            forwarded_for = request.headers.get("X-Forwarded-For", "")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not settings.rate_limit_enabled:
             return await call_next(request)
@@ -21,7 +28,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             client: redis.Redis = await get_cache()
             now = time.time()
             window_start = now - settings.rate_limit_window_seconds
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = self._get_client_ip(request)
             key = f"ratelimit:{client_ip}"
 
             pipeline = client.pipeline()
