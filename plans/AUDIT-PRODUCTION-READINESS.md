@@ -1091,29 +1091,30 @@ Added docstrings to all service functions: `search`, `nearby`, `map_query`, `lis
 
 ---
 
-## Testing Gaps
+## Testing Gaps ✅ **ADDRESSED June 14**
 
 ### Critical Test Coverage Gaps
 
-1. **Security tests missing:**
-   - No test for empty API_KEY
-   - No SQL injection tests
-   - No XSS tests
+1. **Security tests:** ✅ `tests/test_security.py` (37 tests)
+   - SQL injection tests (8 tests): search query, source, place_type, country, entity name, bulk, nearby, map
+   - API key tests (5 tests): empty key, missing key on bulk/delete/update, read endpoints no auth
+   - Input sanitization tests (4 tests): XSS in name, null bytes, long source/source_id
 
-2. **Concurrency tests missing:**
-   - No race condition tests for bulk_upsert
-   - No concurrent read/write tests
-   - No cache stampede tests
+2. **Concurrency tests:** ✅ `tests/test_concurrency.py` (5 tests)
+   - Concurrent bulk upsert (no conflict + conflict xfail)
+   - Concurrent search/nearby while bulk upsert
+   - Concurrent detail requests
+   - Cache stampede tests already in `tests/test_cache_stampede.py` (7 tests)
 
-3. **Cursor pagination tests missing:**
-   - No second-page tests
-   - No malformed cursor tests
-   - No edge cases (empty results, single item)
+3. **Cursor pagination tests:** ✅ Already covered
+   - Second-page tests in `tests/test_search.py`, `tests/test_nearby.py`, `tests/test_classifications.py`
+   - Malformed cursor tests in `tests/test_errors.py`
+   - Edge cases in `tests/test_error_resilience.py` (empty results, single item)
 
-4. **Error path tests missing:**
-   - No Redis failure tests
-   - No database timeout tests
-   - No network failure tests
+4. **Error resilience tests:** ✅ `tests/test_error_resilience.py` (13 tests)
+   - Redis failure tests (5 tests): search, nearby, map, detail, health
+   - Validation error resilience (6 tests): invalid lat/lon, negative radius, invalid bbox, page size
+   - Database timeout tests already in `tests/test_timeout.py` (7 tests)
 
 ### Recommended Test Suite
 
