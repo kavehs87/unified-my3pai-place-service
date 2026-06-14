@@ -5,35 +5,51 @@ from httpx import AsyncClient
 
 
 class FakePipeline:
-    """Fake Redis pipeline that returns controllable results."""
+    """Fake Redis pipeline that returns controllable results.
+    
+    Two-pipeline pattern: first pipeline checks count, second adds member.
+    """
 
-    def __init__(self, count: int = 1):
+    def __init__(self, count: int = 1, is_first: bool = True):
         self.count = count
+        self.is_first = is_first
+        self._cmds: list[str] = []
 
     def zremrangebyscore(self, *args):
+        self._cmds.append("zremrangebyscore")
         return self
 
     def zadd(self, *args):
+        self._cmds.append("zadd")
         return self
 
     def zcard(self, *args):
+        self._cmds.append("zcard")
         return self
 
     def expire(self, *args):
+        self._cmds.append("expire")
         return self
 
     async def execute(self):
-        return [0, True, self.count, True]
+        if "zcard" in self._cmds:
+            # Pipeline 1: zremrangebyscore, zcard, expire → [0, count, True]
+            return [0, self.count, True]
+        else:
+            # Pipeline 2: zadd, expire → [True, True]
+            return [True, True]
 
 
 class FakeRedis:
-    """Fake Redis client."""
+    """Fake Redis client. Tracks pipeline sequence for two-pipeline flow."""
 
     def __init__(self, count: int = 1):
         self.count = count
+        self.pipeline_index = 0
 
     def pipeline(self):
-        return FakePipeline(self.count)
+        self.pipeline_index += 1
+        return FakePipeline(self.count, is_first=(self.pipeline_index == 1))
 
 
 @pytest.mark.asyncio
@@ -76,7 +92,7 @@ async def test_rate_limit_headers_present(client: AsyncClient, session):
             resp = await client.get("/search")
             assert resp.status_code == 200
             assert resp.headers.get("X-RateLimit-Limit") == "100"
-            assert resp.headers.get("X-RateLimit-Remaining") == "99"
+            assert resp.headers.get("X-RateLimit-Remaining") == "98"
 
 
 @pytest.mark.asyncio

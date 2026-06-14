@@ -33,25 +33,29 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
             pipeline = client.pipeline()
             pipeline.zremrangebyscore(key, 0, window_start)
-            member = f"{now}:{uuid.uuid4()}"
-            pipeline.zadd(key, {member: now})
             pipeline.zcard(key)
             pipeline.expire(key, settings.rate_limit_window_seconds + 1)
             results = await pipeline.execute()
 
-            current_requests = results[2]
+            current_requests = results[1]
 
-            if current_requests > settings.rate_limit_max_requests:
+            if current_requests >= settings.rate_limit_max_requests:
                 raise HTTPException(
                     status_code=429,
                     detail="Rate limit exceeded. Try again later.",
                     headers={"Retry-After": str(settings.rate_limit_window_seconds)},
                 )
 
+            pipeline = client.pipeline()
+            member = f"{now}:{uuid.uuid4()}"
+            pipeline.zadd(key, {member: now})
+            pipeline.expire(key, settings.rate_limit_window_seconds + 1)
+            await pipeline.execute()
+
             response = await call_next(request)
             response.headers["X-RateLimit-Limit"] = str(settings.rate_limit_max_requests)
             response.headers["X-RateLimit-Remaining"] = str(
-                max(0, settings.rate_limit_max_requests - current_requests)
+                max(0, settings.rate_limit_max_requests - current_requests - 1)
             )
             return response
 
