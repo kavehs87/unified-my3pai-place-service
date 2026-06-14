@@ -2,6 +2,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -66,6 +67,9 @@ else:
     )
 
 
+logger = structlog.get_logger()
+
+
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
@@ -76,8 +80,18 @@ async def metrics_middleware(request: Request, call_next):
         return response
     status = str(response.status_code)
     method = request.method
+    elapsed_ms = duration * 1000
     REQUEST_DURATION.labels(method=method, endpoint=endpoint, status=status).observe(duration)
     REQUEST_TOTAL.labels(method=method, endpoint=endpoint, status=status).inc()
+    if elapsed_ms > settings.slow_request_threshold_ms:
+        logger.warning(
+            "slow_request",
+            path=endpoint,
+            method=method,
+            elapsed_ms=round(elapsed_ms, 2),
+            status=status,
+            request_id=getattr(request.state, "request_id", ""),
+        )
     return response
 
 

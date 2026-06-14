@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 30.0
     query_timeout_seconds: float = 10.0
     api_key: str = ""
+    slow_request_threshold_ms: float = 500.0
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
