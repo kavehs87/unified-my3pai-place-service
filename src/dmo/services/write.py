@@ -66,13 +66,6 @@ async def _set_locations_batch(session: AsyncSession, updates: list[tuple[UUID, 
     await session.execute(query.bindparams(**params))
 
 
-async def _fetch_entity(session: AsyncSession, entity_id: UUID) -> Entity:
-    """Fetch entity by ID for response serialization. Raises EntityError if not found."""
-    stmt = select(Entity).where(col(Entity.id) == entity_id)
-    result = await session.exec(stmt)
-    return result.one()
-
-
 async def create_entity(
     session: AsyncSession,
     data: EntityCreate,
@@ -362,6 +355,10 @@ async def bulk_upsert(
         await session.flush()
     except IntegrityError:
         await session.rollback()
+        # Re-acquire advisory lock — rollback released the xact lock
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=1234567890)
+        )
         # Re-check which entities now exist (concurrent bulk may have inserted them)
         rechecked = (await session.exec(select(Entity).where(
             tuple_(Entity.source, Entity.source_id).in_(

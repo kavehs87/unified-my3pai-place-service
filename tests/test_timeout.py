@@ -65,6 +65,20 @@ async def test_get_session_sets_statement_timeout():
 
 
 @pytest.mark.asyncio
+async def test_get_session_statement_timeout_is_parameterized():
+    """Verify statement_timeout is set via parameterized set_config(), not f-string."""
+    from sqlalchemy import text
+
+    from dmo.db import get_session
+
+    async for sess in get_session(timeout_override=15.0):
+        result = await sess.execute(text("SHOW statement_timeout"))
+        timeout = result.scalar()
+        assert timeout == "15s"
+        break
+
+
+@pytest.mark.asyncio
 async def test_get_write_session_longer_timeout():
     """Verify that get_write_session uses request_timeout_seconds."""
     from sqlalchemy import text

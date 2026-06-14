@@ -230,7 +230,7 @@ class TestInputSanitization:
             "/entities",
             json={
                 "source": "test",
-                "source_id": "x" * 256,
+                "source_id": "x" * 501,
                 "name": "Test",
                 "place_type": "poi",
                 "latitude": 46.95,

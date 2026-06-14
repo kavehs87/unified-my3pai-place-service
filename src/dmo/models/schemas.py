@@ -156,7 +156,7 @@ class EntityCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     source: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
-    source_id: str = Field(..., min_length=1, max_length=255, strip_whitespace=True)
+    source_id: str = Field(..., min_length=1, max_length=500, strip_whitespace=True)
     source_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
     name: str = Field(..., min_length=1, max_length=255, strip_whitespace=True)
     slug: str | None = Field(None, max_length=255, strip_whitespace=True)

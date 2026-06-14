@@ -33,7 +33,9 @@ async def get_session(timeout_override: float | None = None) -> AsyncGenerator[A
         get_engine()
     async with async_session() as session:
         timeout_ms = int((timeout_override or settings.query_timeout_seconds) * 1000)
-        await session.execute(text(f"SET statement_timeout = '{timeout_ms}'"))
+        await session.execute(
+            text("SELECT set_config('statement_timeout', :timeout, false)").bindparams(timeout=str(timeout_ms))
+        )
         yield session
 
 

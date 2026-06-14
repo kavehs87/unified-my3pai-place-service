@@ -28,7 +28,7 @@ async def get_cache() -> redis.Redis:
 
 
 def _make_key(endpoint: str, params: dict[str, str | int | float | None]) -> str:
-    """Create MD5-hashed cache key from endpoint and params."""
+    """Create SHA-256-hashed cache key from endpoint and params."""
     sorted_params = json.dumps(params, sort_keys=True)
     param_hash = hashlib.sha256(sorted_params.encode()).hexdigest()
     return f"dmo:{endpoint}:{param_hash}"
@@ -87,12 +87,14 @@ async def cache_get_or_set(
     # Try to acquire lock (SET NX)
     acquired = await client.set(lock_key, "1", nx=True, ex=_LOCK_TIMEOUT)
     if not acquired:
-        # Another request is fetching — wait and retry cache
-        await asyncio.sleep(_STAMPEDE_RETRY_DELAY)
-        value = await client.get(key)
-        if value is not None:
-            return value
-        # Lock may be stale — fall through to fetch without lock
+        # Another request is fetching — poll cache until available or timeout
+        for _ in range(40):  # 40 x 50ms = 2s max wait
+            await asyncio.sleep(_STAMPEDE_RETRY_DELAY)
+            value = await client.get(key)
+            if value is not None:
+                CACHE_HITS.inc()
+                return value
+        # Lock may be stale or fetch too slow — fall through to fetch without lock
         return None
 
     try:
