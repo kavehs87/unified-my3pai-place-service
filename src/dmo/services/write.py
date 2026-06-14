@@ -246,17 +246,18 @@ async def bulk_upsert(
 ) -> list[EntityListItem]:
     """Bulk upsert entities using ON CONFLICT DO UPDATE.
 
-    Serializes operations to prevent race conditions. Returns created/updated entities.
+    Serializes operations with advisory lock. Handles concurrent requests
+    by re-checking existing entities on IntegrityError.
     """
     if not entities:
         return []
-
-    source_ids = [(d.source, d.source_id) for d in entities]
 
     # Serialize bulk operations to prevent race condition
     await session.execute(
         text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=1234567890)
     )
+
+    source_ids = [(d.source, d.source_id) for d in entities]
 
     existing_stmt = select(Entity).where(
         tuple_(Entity.source, Entity.source_id).in_(source_ids)
@@ -265,9 +266,8 @@ async def bulk_upsert(
     existing_map = {(e.source, e.source_id): e for e in existing_rows}
 
     location_updates: list[tuple[UUID, float, float]] = []
-    new_entities: list[Entity] = []
-    new_entity_loc_updates: list[tuple[Entity, float, float]] = []
     result_ids: list[UUID | None] = []
+    new_entities: list[Entity] = []
     new_entity_indices: list[int] = []
 
     for i, data in enumerate(entities):
@@ -278,17 +278,11 @@ async def bulk_upsert(
             update_data = data.model_dump(exclude_unset=False)
 
             need_location_update = False
-            new_lat = existing.latitude
-            new_lon = existing.longitude
+            new_lat = update_data.get("latitude")
+            new_lon = update_data.get("longitude")
 
-            if "latitude" in update_data:
-                new_lat = update_data["latitude"]
+            if new_lat is not None and new_lon is not None:
                 need_location_update = True
-            if "longitude" in update_data:
-                new_lon = update_data["longitude"]
-                need_location_update = True
-
-            if need_location_update and new_lat is not None and new_lon is not None:
                 update_data.pop("latitude", None)
                 update_data.pop("longitude", None)
 
@@ -361,9 +355,6 @@ async def bulk_upsert(
             new_entity_indices.append(i)
             result_ids.append(None)
 
-            if data.latitude is not None and data.longitude is not None:
-                new_entity_loc_updates.append((entity, data.longitude, data.latitude))
-
     if new_entities:
         session.add_all(new_entities)
 
@@ -371,15 +362,42 @@ async def bulk_upsert(
         await session.flush()
     except IntegrityError:
         await session.rollback()
-        raise EntityError("Bulk upsert failed: duplicate key conflict")
+        # Re-check which entities now exist (concurrent bulk may have inserted them)
+        rechecked = (await session.exec(select(Entity).where(
+            tuple_(Entity.source, Entity.source_id).in_(
+                [(e.source, e.source_id) for e in new_entities]
+            )
+        ))).all()
+        rechecked_map = {(e.source, e.source_id): e for e in rechecked}
 
-    # Resolve placeholder IDs for new entities after flush
+        still_new: list[Entity] = []
+        for idx, entity in zip(new_entity_indices, new_entities):
+            key = (entity.source, entity.source_id)
+            if key in rechecked_map:
+                existing = rechecked_map[key]
+                for field_name in Entity.model_fields:
+                    val = getattr(entity, field_name, None)
+                    if field_name not in ("id", "created_at", "updated_at"):
+                        setattr(existing, field_name, val)
+                result_ids[idx] = existing.id
+                if entity.latitude is not None and entity.longitude is not None:
+                    location_updates.append((existing.id, entity.longitude, entity.latitude))
+            else:
+                still_new.append(entity)
+
+        if still_new:
+            session.add_all(still_new)
+            await session.flush()
+
+    # Resolve IDs for new entities
     for idx, entity in zip(new_entity_indices, new_entities):
-        result_ids[idx] = entity.id
+        if result_ids[idx] is None:
+            result_ids[idx] = entity.id
 
-    # Resolve location updates for new entities
-    for entity, lon, lat in new_entity_loc_updates:
-        location_updates.append((entity.id, lon, lat))
+    # Set location for new entities
+    for entity in new_entities:
+        if entity.latitude is not None and entity.longitude is not None:
+            location_updates.append((entity.id, entity.longitude, entity.latitude))
 
     if location_updates:
         await _set_locations_batch(session, location_updates)

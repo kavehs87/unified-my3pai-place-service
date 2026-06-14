@@ -48,9 +48,8 @@ class TestConcurrentBulkUpsert:
         assert resp2.status_code == 201
 
     @pytest.mark.asyncio
-    @pytest.mark.xfail(reason="Race condition in bulk_upsert: advisory lock not fully preventing conflicts")
     async def test_concurrent_bulk_upsert_conflict_handled(self, client: AsyncClient):
-        """Two concurrent bulk operations with same source_ids don't crash."""
+        """Two concurrent bulk operations with same source_ids succeed (no 500)."""
         batch = [
             {
                 "source": "test",
@@ -68,9 +67,9 @@ class TestConcurrentBulkUpsert:
             client.post("/entities/bulk", json=batch, headers=WRITE_HEADERS),
             client.post("/entities/bulk", json=batch, headers=WRITE_HEADERS),
         )
-        # At least one should succeed; neither should return 500
-        assert resp1.status_code != 500
-        assert resp2.status_code != 500
+        # Both should succeed — the second should update existing entities
+        assert resp1.status_code == 201
+        assert resp2.status_code == 201
 
 
 class TestConcurrentReadWrite:
