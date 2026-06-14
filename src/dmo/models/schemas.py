@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -155,49 +155,49 @@ class EntityDetail(BaseModel):
 class EntityCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    source: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
-    source_id: str = Field(..., min_length=1, max_length=500, strip_whitespace=True)
-    source_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    name: str = Field(..., min_length=1, max_length=255, strip_whitespace=True)
-    slug: str | None = Field(None, max_length=255, strip_whitespace=True)
-    summary: str | None = Field(None, max_length=5000, strip_whitespace=True)
-    description: str | None = Field(None, max_length=50000, strip_whitespace=True)
-    description_format: str | None = Field(None, max_length=50, strip_whitespace=True)
-    place_type: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
-    category_class: str | None = Field(None, max_length=100, strip_whitespace=True)
+    source: str = Field(..., min_length=1, max_length=100)
+    source_id: str = Field(..., min_length=1, max_length=500)
+    source_url: str | None = Field(None, max_length=2048)
+    name: str = Field(..., min_length=1, max_length=255)
+    slug: str | None = Field(None, max_length=255)
+    summary: str | None = Field(None, max_length=5000)
+    description: str | None = Field(None, max_length=50000)
+    description_format: str | None = Field(None, max_length=50)
+    place_type: str = Field(..., min_length=1, max_length=100)
+    category_class: str | None = Field(None, max_length=100)
     secondary_types: list[str] | None = Field(default=None, max_length=100)
-    collection_id: str | None = Field(None, max_length=255, strip_whitespace=True)
-    collection_name: str | None = Field(None, max_length=255, strip_whitespace=True)
-    collection_slug: str | None = Field(None, max_length=255, strip_whitespace=True)
+    collection_id: str | None = Field(None, max_length=255)
+    collection_name: str | None = Field(None, max_length=255)
+    collection_slug: str | None = Field(None, max_length=255)
     latitude: float | None = None
     longitude: float | None = None
-    country: str | None = Field(None, max_length=100, strip_whitespace=True)
-    region: str | None = Field(None, max_length=255, strip_whitespace=True)
-    locality: str | None = Field(None, max_length=255, strip_whitespace=True)
+    country: str | None = Field(None, max_length=100)
+    region: str | None = Field(None, max_length=255)
+    locality: str | None = Field(None, max_length=255)
     region_names: list[str] | None = Field(default=None, max_length=100)
-    address: str | None = Field(None, max_length=500, strip_whitespace=True)
-    postal_code: str | None = Field(None, max_length=20, strip_whitespace=True)
-    thumbnail_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    icon_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    website: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    map_screenshot_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    license: str | None = Field(None, max_length=255, strip_whitespace=True)
-    access_type: str | None = Field(None, max_length=50, strip_whitespace=True)
+    address: str | None = Field(None, max_length=500)
+    postal_code: str | None = Field(None, max_length=20)
+    thumbnail_url: str | None = Field(None, max_length=2048)
+    icon_url: str | None = Field(None, max_length=2048)
+    website: str | None = Field(None, max_length=2048)
+    map_screenshot_url: str | None = Field(None, max_length=2048)
+    license: str | None = Field(None, max_length=255)
+    access_type: str | None = Field(None, max_length=50)
     is_reusable: bool = False
     is_free: bool = False
     is_open: bool | None = None
     opens_at: datetime | None = None
     closes_at: datetime | None = None
-    opening_hours: str | None = Field(None, max_length=500, strip_whitespace=True)
-    recommended_season: str | None = Field(None, max_length=255, strip_whitespace=True)
-    business_status: str | None = Field(None, max_length=50, strip_whitespace=True)
-    phone: str | None = Field(None, max_length=50, strip_whitespace=True)
-    email: str | None = Field(None, max_length=255, strip_whitespace=True)
-    booking_link: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    menu_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    order_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    reservations_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    currency: str | None = Field(None, max_length=3, strip_whitespace=True)
+    opening_hours: str | None = Field(None, max_length=500)
+    recommended_season: str | None = Field(None, max_length=255)
+    business_status: str | None = Field(None, max_length=50)
+    phone: str | None = Field(None, max_length=50)
+    email: str | None = Field(None, max_length=255)
+    booking_link: str | None = Field(None, max_length=2048)
+    menu_url: str | None = Field(None, max_length=2048)
+    order_url: str | None = Field(None, max_length=2048)
+    reservations_url: str | None = Field(None, max_length=2048)
+    currency: str | None = Field(None, max_length=3)
     price_min: float | None = None
     price_max: float | None = None
     price_level: int | None = None
@@ -209,6 +209,13 @@ class EntityCreate(BaseModel):
     reviews_count: int | None = None
     attributes: dict = {}
     is_active: bool = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def strip_strings(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+        return data
 
     @model_validator(mode='after')
     def validate_coordinates(self):
@@ -222,47 +229,47 @@ class EntityCreate(BaseModel):
 class EntityUpdate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    source_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    name: str | None = Field(None, min_length=1, max_length=255, strip_whitespace=True)
-    slug: str | None = Field(None, max_length=255, strip_whitespace=True)
-    summary: str | None = Field(None, max_length=5000, strip_whitespace=True)
-    description: str | None = Field(None, max_length=50000, strip_whitespace=True)
-    description_format: str | None = Field(None, max_length=50, strip_whitespace=True)
-    place_type: str | None = Field(None, min_length=1, max_length=100, strip_whitespace=True)
-    category_class: str | None = Field(None, max_length=100, strip_whitespace=True)
+    source_url: str | None = Field(None, max_length=2048)
+    name: str | None = Field(None, min_length=1, max_length=255)
+    slug: str | None = Field(None, max_length=255)
+    summary: str | None = Field(None, max_length=5000)
+    description: str | None = Field(None, max_length=50000)
+    description_format: str | None = Field(None, max_length=50)
+    place_type: str | None = Field(None, min_length=1, max_length=100)
+    category_class: str | None = Field(None, max_length=100)
     secondary_types: list[str] | None = Field(default=None, max_length=100)
-    collection_id: str | None = Field(None, max_length=255, strip_whitespace=True)
-    collection_name: str | None = Field(None, max_length=255, strip_whitespace=True)
-    collection_slug: str | None = Field(None, max_length=255, strip_whitespace=True)
+    collection_id: str | None = Field(None, max_length=255)
+    collection_name: str | None = Field(None, max_length=255)
+    collection_slug: str | None = Field(None, max_length=255)
     latitude: float | None = None
     longitude: float | None = None
-    country: str | None = Field(None, max_length=100, strip_whitespace=True)
-    region: str | None = Field(None, max_length=255, strip_whitespace=True)
-    locality: str | None = Field(None, max_length=255, strip_whitespace=True)
+    country: str | None = Field(None, max_length=100)
+    region: str | None = Field(None, max_length=255)
+    locality: str | None = Field(None, max_length=255)
     region_names: list[str] | None = Field(default=None, max_length=100)
-    address: str | None = Field(None, max_length=500, strip_whitespace=True)
-    postal_code: str | None = Field(None, max_length=20, strip_whitespace=True)
-    thumbnail_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    icon_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    website: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    map_screenshot_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    license: str | None = Field(None, max_length=255, strip_whitespace=True)
-    access_type: str | None = Field(None, max_length=50, strip_whitespace=True)
+    address: str | None = Field(None, max_length=500)
+    postal_code: str | None = Field(None, max_length=20)
+    thumbnail_url: str | None = Field(None, max_length=2048)
+    icon_url: str | None = Field(None, max_length=2048)
+    website: str | None = Field(None, max_length=2048)
+    map_screenshot_url: str | None = Field(None, max_length=2048)
+    license: str | None = Field(None, max_length=255)
+    access_type: str | None = Field(None, max_length=50)
     is_reusable: bool | None = None
     is_free: bool | None = None
     is_open: bool | None = None
     opens_at: datetime | None = None
     closes_at: datetime | None = None
-    opening_hours: str | None = Field(None, max_length=500, strip_whitespace=True)
-    recommended_season: str | None = Field(None, max_length=255, strip_whitespace=True)
-    business_status: str | None = Field(None, max_length=50, strip_whitespace=True)
-    phone: str | None = Field(None, max_length=50, strip_whitespace=True)
-    email: str | None = Field(None, max_length=255, strip_whitespace=True)
-    booking_link: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    menu_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    order_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    reservations_url: str | None = Field(None, max_length=2048, strip_whitespace=True)
-    currency: str | None = Field(None, max_length=3, strip_whitespace=True)
+    opening_hours: str | None = Field(None, max_length=500)
+    recommended_season: str | None = Field(None, max_length=255)
+    business_status: str | None = Field(None, max_length=50)
+    phone: str | None = Field(None, max_length=50)
+    email: str | None = Field(None, max_length=255)
+    booking_link: str | None = Field(None, max_length=2048)
+    menu_url: str | None = Field(None, max_length=2048)
+    order_url: str | None = Field(None, max_length=2048)
+    reservations_url: str | None = Field(None, max_length=2048)
+    currency: str | None = Field(None, max_length=3)
     price_min: float | None = None
     price_max: float | None = None
     price_level: int | None = None
@@ -274,6 +281,13 @@ class EntityUpdate(BaseModel):
     reviews_count: int | None = None
     attributes: dict | None = None
     is_active: bool | None = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def strip_strings(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+        return data
 
     @model_validator(mode='after')
     def validate_coordinates(self):
