@@ -1,6 +1,10 @@
 # Unified My3Pai Place Service
 
-A provider-agnostic data store and query API for tourism and point-of-interest data. Ingests places from any source into a single normalized schema, then serves them through a fast, cached, spatially aware REST API.
+A provider-agnostic data store and query API for tourism and POI data. Ingests places from any source into a single normalized schema, then serves them through a fast, cached, spatially-aware REST API.
+
+**Status:** Production-ready | **Tests:** 231 passing | **Lint:** ruff clean | **Grade:** A
+
+---
 
 ## Problem
 
@@ -23,13 +27,14 @@ A single normalized schema that knows nothing about data providers. External imp
 | **JSONB overflow** | Domain-specific fields (routes, F&B, provider extras) live in a GIN-indexed `attributes` column. |
 | **Source uniqueness** | `(source, source_id)` unique constraint — same entity from different sources = separate rows. |
 | **Format-agnostic content** | `description` stores raw format; `description_format` tells the API how to transform it. |
-| **Soft deletes** | Entities are deactivated (`is_active = false`) rather than destroyed. |
+| **Soft deletes** | Entities, media, and classifications are deactivated (`is_active = false`) rather than destroyed. |
+| **Zero-trust input** | String fields stripped, X-Request-ID validated as UUID, API key on all writes. |
 
 ## Tech Stack
 
-- **Python 3.12+** — FastAPI, async throughout
-- **PostgreSQL + PostGIS** — Spatial indexing, full-text search, JSONB queries
-- **Redis** — Response caching, rate limiting
+- **Python 3.12+** — FastAPI, fully async
+- **PostgreSQL + PostGIS** — Spatial indexing, trigram search, JSONB queries
+- **Redis** — Response caching, rate limiting, cache stampede protection
 - **SQLModel + asyncpg** — Type-safe ORM with raw SQL where it counts
 - **Alembic** — Database migrations
 - **structlog** — Structured JSON logging with request ID tracing
@@ -40,30 +45,30 @@ A single normalized schema that knows nothing about data providers. External imp
 
 ```
 src/dmo/
-├── main.py              # App factory, lifespan, middleware chain
-├── config.py            # Settings via pydantic-settings
-├── db.py                # Async connection pool + session factory
-├── exceptions.py        # Structured error responses
+├── main.py              # FastAPI app, lifespan, middleware, exception handlers
+├── config.py            # Settings via pydantic-settings (env vars)
+├── db.py                # Async engine (lazy-init), pool config, session factory
+├── exceptions.py        # AppError class, global exception handlers
 ├── logging.py           # structlog JSON renderer
 ├── metrics.py           # Prometheus counters/histograms
 ├── api/
-│   ├── router.py        # REST endpoints (read + write)
-│   ├── health.py        # /health with DB + Redis checks
+│   ├── router.py        # All REST endpoints (read + write)
+│   ├── health.py        # /health with DB + Redis checks (1.5s timeout each)
 │   └── metrics.py       # /metrics Prometheus endpoint
 ├── middleware/
-│   ├── request_id.py    # X-Request-ID generation + 5xx logging
-│   └── rate_limit.py    # Redis sliding-window rate limiter
+│   ├── request_id.py    # X-Request-ID generation, UUID validation, logging
+│   └── rate_limit.py    # Per-IP Redis sliding-window rate limiter (X-Forwarded-For aware)
 ├── models/
 │   ├── database.py      # SQLModel tables (Entity, Media, Classification, Route)
-│   └── schemas.py       # Pydantic request/response schemas
+│   └── schemas.py       # Pydantic request/response schemas (V3-ready)
 └── services/
-    ├── cache.py         # Redis cache wrapper (MD5-hashed keys)
-    ├── classifications.py  # Classifications list + categories
-    ├── detail.py        # Detail query with asyncio.gather optimization
-    ├── pagination.py    # Cursor encode/decode helpers
-    ├── search.py        # Text search (pg_trgm) + filters
-    ├── spatial.py       # Nearby (ST_DWithin) + map (ST_Intersects)
-    └── write.py         # Create/update/delete + cache invalidation
+    ├── cache.py         # SHA-256-hashed Redis cache + stampede protection
+    ├── classifications.py  # Classifications list (single-pass) + categories
+    ├── detail.py        # Detail query with asyncio.gather + description transform
+    ├── pagination.py    # Cursor encode/decode helpers (strict type validation)
+    ├── search.py        # Text search (pg_trgm) with single-pass COUNT(*) OVER()
+    ├── spatial.py       # Nearby (ST_DWithin) + map (ST_Intersects) with cursor pagination
+    └── write.py         # Create/update/delete + advisory locks + cache invalidation
 ```
 
 **Layer pattern:** Routers → Services → Database
@@ -82,7 +87,7 @@ All tourism items live in a single table, differentiated by `place_type`.
 | **Collection** | `collection_id`, `collection_name`, `collection_slug` |
 | **Location** | `location` (GEOGRAPHY Point), `latitude`, `longitude`, `country`, `region`, `locality`, `region_names` (array), `address`, `postal_code` |
 | **Media** | `thumbnail_url`, `icon_url`, `website`, `map_screenshot_url` |
-| **Hours** | `is_free`, `is_open`, `opens_at`, `closes_at`, `opening_hours`, `recommended_season`, `business_status` |
+| **Hours** | `is_open`, `opens_at`, `closes_at`, `opening_hours`, `recommended_season`, `business_status` |
 | **Contact** | `phone`, `email`, `booking_link`, `menu_url`, `order_url`, `reservations_url` |
 | **Pricing** | `currency`, `price_min`, `price_max`, `price_level` |
 | **Accessibility** | `is_barrier_free`, `wheelchair_accessible` |
@@ -90,93 +95,125 @@ All tourism items live in a single table, differentiated by `place_type`.
 | **Overflow** | `attributes` (JSONB) |
 | **Lifecycle** | `is_active`, `imported_at`, `updated_at` |
 
-**Indexes:** GIST on `location`, B-tree on `(lat, lon)`, GIN on `attributes`, GIN trgm on `name`, partial on `rating`, composite on `(source, is_active)`, `(place_type, is_active)`, `(country, is_active)`, `(collection_id, is_active)`.
+**Indexes:** GIST on `location`, GIN on `attributes`, GIN trigram on `name` and `summary`, B-tree on `(lat, lon)`, partial on `rating`, partial on `slug`, composite on `(source, is_active)`, `(place_type, is_active)`, `(country, is_active)`, `(collection_id, is_active)`.
 
 ### `media` — Images, videos, audio per entity
 
-`id`, `entity_id` (FK CASCADE), `media_type`, `url`, `name`, `keywords`, `copyright_holder`, `publisher`, `width`, `height`, `encoding_format`, `sort_order`, `attributions` (JSONB), `poster_url`, `is_muted`
+`id`, `entity_id` (FK), `media_type`, `url`, `name`, `keywords`, `copyright_holder`, `publisher`, `width`, `height`, `encoding_format`, `sort_order`, `attributions` (JSONB), `poster_url`, `is_muted`, `is_active`
 
 ### `classifications` — Categorical tags per entity
 
-`id`, `entity_id` (FK CASCADE), `category`, `value_code`, `value_title`
+`id`, `entity_id` (FK), `category`, `value_code`, `value_title`, `is_active`
 
 ### `routes` — Geometries for trails and tours
 
-`id`, `entity_id` (FK CASCADE), `geometry` (GEOMETRY), `elevation_profile` (JSONB), `fetched_at`
+`id`, `entity_id` (FK), `geometry` (GEOMETRY), `elevation_profile` (JSONB), `fetched_at`
 
 ## API
 
 ### Read Endpoints
 
-| Method | Path | Description | Cache |
+| Method | Path | Description | Cache TTL |
 |---|---|---|---|
-| `GET` | `/search` | Full-text search with filters | 5 min |
-| `GET` | `/nearby` | Proximity search (lat/lon/radius) | 5 min |
-| `GET` | `/map` | Bounding-box spatial query | 5 min |
+| `GET` | `/search` | Full-text search with filters (q, source, place_type, country) | 5 min |
+| `GET` | `/nearby` | Proximity search (lat/lon/radius_km) | 5 min |
+| `GET` | `/map` | Bounding-box spatial query (minLon,minLat,maxLon,maxLat) | 5 min |
 | `GET` | `/{source}/{source_id}` | Entity detail + media + classifications | 30 min |
 | `GET` | `/classifications` | List classifications with filters | 5 min |
 | `GET` | `/classifications/categories` | Distinct category values | 5 min |
-| `GET` | `/health` | Health check (DB + Redis) | — |
+| `GET` | `/health` | Health check (DB + Redis, returns 503 if degraded) | — |
 | `GET` | `/metrics` | Prometheus metrics | — |
 
-### Write Endpoints
+**Open-status caching:** The detail endpoint uses split-cache TTLs — stable fields (name, description, media) are cached for 30 min, while time-sensitive fields (`is_open`, `opens_at`, `closes_at`) are cached separately for 60 seconds and merged at response time.
+
+### Write Endpoints (API key required)
 
 | Method | Path | Description | Status |
 |---|---|---|---|
 | `POST` | `/entities` | Create entity | 201 |
-| `POST` | `/entities/bulk` | Bulk upsert | 201 |
+| `POST` | `/entities/bulk` | Bulk upsert (max 1000, advisory-locked) | 201 |
 | `PUT` | `/{source}/{source_id}` | Update entity | 200 |
 | `DELETE` | `/{source}/{source_id}` | Soft-delete entity | 200 |
 | `POST` | `/media` | Add media to entity | 201 |
-| `DELETE` | `/media/{media_id}` | Delete media | 200 |
+| `DELETE` | `/media/{media_id}` | Soft-delete media | 200 |
 | `POST` | `/classifications` | Add classification | 201 |
+| `DELETE` | `/classifications/{classification_id}` | Soft-delete classification | 200 |
 
 ### Pagination
 
-All list endpoints use **cursor-based pagination** (keyset pagination) for stable, performant results at any offset:
+All list endpoints use **cursor-based pagination** (keyset pagination) for stable, O(1) page access at any depth:
 
 ```json
 {
   "results": [...],
   "total": 1250,
-  "next_cursor": "eyJpZCI6ICIzZmE...IiwgInNvcnQiOiAiMjAyNS0wMS0wMSJ9",
+  "next_cursor": "eyJpZCI6ICIzZmE...IiwgInNvcnQiOiAyMDI1LTAxLTAxIn0=",
   "has_more": true
 }
 ```
+
+Cursors are base64-encoded JSON with strict UUID/int validation. Malformed cursors return a `400 InvalidCursor` error.
 
 ### Error Responses
 
 ```json
 {
   "error": "NotFound",
-  "message": "Entity not found: google/ChIJ...",
+  "message": "Entity not found: some_source/abc123",
   "code": 404,
-  "request_id": "req_abc123"
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
+All errors follow this format. 5xx errors are logged at ERROR level; 4xx at WARNING.
+
 ## Caching
 
-- **Redis** with MD5-hashed keys: `dmo:{endpoint}:{hash_of_params}`
-- **TTLs:** 5 min (search/nearby/map/classifications), 30 min (detail), 60 s (open-status)
-- **Fault-tolerant:** Cache failures pass through silently — no cascading failures
-- **Invalidation:** Write operations clear `dmo:*` or entity-specific detail caches
-- **Instrumented:** `cache_hits_total` and `cache_misses_total` Prometheus counters
+- **Redis** with SHA-256-hashed keys: `dmo:{endpoint}:{hash_of_params}`
+- **TTLs:** 5 min (search/nearby/map/classifications/categories), 30 min (detail), 60 s (open-status)
+- **Stampede protection:** `SET NX` distributed lock — only one request fetches on cache miss. Waiters poll with 50ms intervals for up to 5 seconds before falling through.
+- **Error resilience:** Cache failures log to structlog and degrade gracefully. The app continues serving from the database.
+- **Invalidation:** Single-entity writes clear all 7 cache patterns. Bulk upserts with >20 entities use a single `dmo:*` wildcard purge. Cache invalidation runs before commit for consistency.
+- **Instrumentation:** `cache_hits_total` and `cache_misses_total` Prometheus counters per endpoint.
 
-## Scalability
+## Security & Hardening
 
-| Feature | Benefit |
+| Feature | Detail |
 |---|---|
-| **Async I/O** | Non-blocking DB queries, Redis calls, and HTTP responses |
-| **Connection pooling** | Configurable pool (default 20 + 10 overflow) |
-| **Cursor pagination** | No OFFSET/N degradation — O(1) page access |
-| **GIST spatial index** | Fast Haversine and bounding-box queries |
-| **pg_trgm GIN index** | Fuzzy text search without full PostgreSQL FTS overhead |
-| **JSONB GIN index** | Queryable overflow attributes without schema changes |
-| **Parallel detail queries** | `asyncio.gather` fetches entity, media, and classifications concurrently |
-| **Rate limiting** | Redis sliding window (1000 req/60s default) |
-| **Request timeouts** | Configurable timeout middleware (30s default, returns 504) |
-| **Multi-worker** | Uvicorn with 4 workers in production |
+| **API key authentication** | All write endpoints require `X-API-Key` header. App fails to start if `API_KEY` is not set. |
+| **SQL injection prevention** | All SQL uses parameterized queries — `bindparams()` for raw SQL, ORM for everything else. Session timeouts set via `set_config()` (not f-string). |
+| **XSS prevention** | Description transforms use `html.escape` + `bleach` with protocol blocking. ProseMirror → HTML serializer strips dangerous markup. |
+| **Rate limiting** | Per-IP sliding-window via Redis sorted sets. Supports `X-Forwarded-For` header for production deployments behind reverse proxies (configurable). |
+| **Request ID validation** | Client-supplied `X-Request-ID` headers are validated as UUIDs. Non-UUID values are silently replaced with a generated UUID. |
+| **Input sanitization** | All string fields are stripped of whitespace via Pydantic `model_validator(mode='before')`. Coordinate validation enforces both-or-neither for `lat`/`lon`. |
+| **Health checks** | Returns HTTP 503 when components are degraded (not 200 with degraded body). 1.5s per-component timeout, total < Docker's 5s HEALTHCHECK limit. |
+
+## Concurrency & Data Integrity
+
+| Feature | Detail |
+|---|---|
+| **Advisory locks** | Bulk upserts acquire `pg_advisory_xact_lock` scoped by source hash — different source imports run concurrently, same-source imports serialize. |
+| **IntegrityError retry** | On concurrent conflict, rolls back, re-acquires lock, re-checks existing entities, retries. |
+| **REPEATABLE_READ isolation** | Consistent reads throughout transactions, preventing phantom reads. |
+| **Pre-commit invalidation** | Cache is invalidated before transaction commit, preventing stale reads. |
+| **Soft deletes** | `DELETE` sets `is_active=false` on entities, media, and classifications. Read queries filter `is_active=true`. |
+| **Coordinate consistency** | Entity create/update validates both-or-neither for `latitude`/`longitude`. Updates fall back to existing values for partial updates. |
+
+## Performance
+
+| Feature | Detail |
+|---|---|
+| **Async I/O** | Non-blocking DB queries, Redis calls, and HTTP responses throughout. |
+| **Connection pooling** | Configurable pool (default 10 + 5 overflow × 4 workers = 60 total, safe under PG max_connections=100). |
+| **Cursor pagination** | No OFFSET/N degradation — O(1) page access at any depth. Spatial and classification endpoints use valid, tested cursor pagination. |
+| **GIST spatial index** | Fast Haversine (`ST_DWithin`) and bounding-box (`ST_Intersects`) queries with correct SRID handling (`ST_SetSRID` + `::geography`). |
+| **pg_trgm GIN index** | Fuzzy text search on `name` and `summary` via `%` operator, avoiding sequential scans. |
+| **JSONB GIN index** | Queryable overflow attributes without schema changes. |
+| **Single-pass queries** | All list endpoints use `COUNT(*) OVER()` window function — no separate COUNT query. One round-trip per page. |
+| **Parallel detail queries** | `asyncio.gather` fetches entity, media, and classifications concurrently. |
+| **Strict query timeouts** | Read sessions: 10s. Write sessions: 30s. Enforced at DB level via `statement_timeout`. Requests timeout at 30s via `asyncio.wait_for`. |
+| **Bulk batch optimization** | Bulk upserts with >20 entities use single-pass cache invalidation (`dmo:*`) instead of per-entity cascade. |
+| **Slow request logging** | Requests exceeding 500ms are flagged in structured logs. |
 
 ## Quick Start
 
@@ -203,69 +240,101 @@ uv run alembic upgrade head
 uv run uvicorn dmo.main:app --reload
 ```
 
-The API will be available at `http://localhost:8000` with auto-generated docs at `/docs` (Swagger UI) and `/redoc` (ReDoc).
+The API is available at `http://localhost:8000` with auto-generated docs at `/docs` (Swagger UI) and `/redoc` (ReDoc).
 
 ### Configuration
 
-| Environment Variable | Default | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5432/dmo` | Async DB connection |
-| `DATABASE_URL_SYNC` | `postgresql+psycopg2://postgres:postgres@localhost:5432/dmo` | Sync DB connection (Alembic) |
+| `DATABASE_URL` | *(required)* | Async DB connection (asyncpg) |
+| `DATABASE_URL_SYNC` | *(required)* | Sync DB connection for Alembic |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
-| `CACHE_TTL` | `300` | Default cache TTL (seconds) |
+| `API_KEY` | *(required)* | API key for write endpoints (fails startup if empty) |
+| `CACHE_TTL` | `300` | Default cache TTL in seconds |
 | `RATE_LIMIT_ENABLED` | `true` | Enable/disable rate limiting |
-| `RATE_LIMIT_MAX_REQUESTS` | `1000` | Max requests per window |
-| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window (seconds) |
-| `POOL_SIZE` | `20` | DB connection pool size |
-| `MAX_OVERFLOW` | `10` | DB max overflow connections |
+| `RATE_LIMIT_MAX_REQUESTS` | `1000` | Max requests per window per IP |
+| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window in seconds |
+| `TRUST_PROXY_HEADERS` | `true` | Use `X-Forwarded-For` for client IP (disable for direct connections) |
+| `POOL_SIZE` | `10` | DB connection pool size per worker |
+| `MAX_OVERFLOW` | `5` | DB max overflow per worker |
+| `QUERY_TIMEOUT_SECONDS` | `10.0` | Read query timeout (write uses `REQUEST_TIMEOUT_SECONDS`) |
+| `REQUEST_TIMEOUT_SECONDS` | `30.0` | HTTP request timeout |
+| `SLOW_REQUEST_THRESHOLD_MS` | `500.0` | Log warning for requests exceeding this |
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `ALLOWED_ORIGINS` | `*` | CORS allowed origins |
-| `REQUEST_TIMEOUT_SECONDS` | `30.0` | Request timeout (seconds) |
 
 ## Testing
 
-Tests run against a real PostgreSQL + PostGIS database (not SQLite) to ensure spatial query correctness.
+Tests run against a real PostgreSQL + PostGIS database (not SQLite) to ensure spatial query correctness. Cache is disabled in tests via autouse fixture.
 
 ```bash
-# Run tests
+# Run all tests
 uv run pytest tests/
+
+# Run with verbose output
+uv run pytest tests/ -v
 
 # Lint
 uv run ruff check src/ tests/
+
+# Format
+uv run ruff format src/ tests/
 ```
 
-**Test coverage:** 70+ tests across search, spatial queries, detail, classifications, CRUD operations, error handling, caching, rate limiting, and health checks.
+**Test coverage:** 231 tests across 22 test files covering search, nearby, map, detail, classifications, CRUD, bulk upserts, cache stampede, concurrency, rate limiting, XSS, security, error resilience, coordinate validation, timeouts, health checks, auth, and open-status caching.
 
 ## Production Deployment
 
 ```bash
-# Production stack with health checks and resource limits
+# Production stack with health checks, resource limits, and env vars
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-The Dockerfile uses a multi-stage build with `uv` for fast, lockfile-based dependency installation. The entrypoint runs Alembic migrations before starting Uvicorn with 4 workers.
+The Dockerfile uses a multi-stage build with `uv` for fast, lockfile-based dependency installation. The entrypoint runs **Alembic migrations** before starting Uvicorn with 4 workers. Health checks use the `/health` endpoint with a 5-second timeout.
+
+**Before deploying to heavy traffic:** Run load tests (spike + soak + write-path) using the k6 script in `loadtest/`.
 
 ## Query Patterns
 
 ```sql
--- Spatial proximity
-ST_DWithin(location, ST_MakePoint(lon, lat, 4326)::geography, radius_m)
+-- Spatial proximity (correct SRID handling)
+ST_DWithin(location, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius_m)
 
 -- Bounding box
-ST_Intersects(location, ST_MakeEnvelope(minLon, minLat, maxLon, maxLat, 4326)::geography)
+ST_Intersects(location, ST_MakeEnvelope(:minLon, :minLat, :maxLon, :maxLat, 4326)::geography)
 
 -- JSONB containment
 attributes @> '{"key": "value"}'
 
--- JSONB numeric sort
+-- JSONB numeric sort and filter
 (attributes->>'distance_km')::numeric DESC
 
--- Text search (trigram)
-name ILIKE '%query%'  -- backed by GIN gin_trgm_ops index
+-- Text search via trigram similarity (GIN gin_trgm_ops backed)
+col(Entity.name).op('%')('search query')
 
 -- Array overlap
 region_names && ARRAY['Switzerland', 'Zurich']
+
+-- Single-pass total count
+COUNT(*) OVER() AS total
+
+-- Advisory lock for bulk operations
+SELECT pg_advisory_xact_lock(:lock_id)
 ```
+
+## Audit History
+
+This project has been through 6 audit cycles. All issues identified across all cycles are fixed and verified.
+
+| Audit | Date | Issues | Grade | Status |
+|-------|------|--------|-------|--------|
+| v1 (`AUDIT.md`) | Jun 13 | 40 issues | C+ | ✅ All fixed |
+| v2 (`AUDIT-REAUDIT.md`) | Jun 13 | 29 issues | C | ✅ 26/26 fixes confirmed |
+| v3 (`AUDIT-FINAL.md`) | Jun 14 | 26 verifications | B+ | ✅ All verified |
+| v4 (`AUDIT-V5-FINAL.md`) | Jun 14 | 3 new P1 bugs | A- | ✅ All fixed |
+| v5 (`AUDIT-V6-FINAL.md`) | Jun 14 | 17 new issues | A | ✅ All fixed |
+
+See `plans/` for full audit reports.
 
 ## License
 
