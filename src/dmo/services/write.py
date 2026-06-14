@@ -36,6 +36,11 @@ async def invalidate_entity_caches(entity_id: UUID) -> None:
         await cache_delete_pattern(pattern)
 
 
+async def invalidate_all_caches() -> None:
+    """Purge entire cache namespace. Used for bulk operations to avoid O(n) SCAN."""
+    await cache_delete_pattern("dmo:*")
+
+
 async def _set_location(session: AsyncSession, entity_id: UUID, lon: float, lat: float) -> None:
     """Set PostGIS location column for a single entity via raw SQL."""
     await session.execute(
@@ -399,9 +404,12 @@ async def bulk_upsert(
     if location_updates:
         await _set_locations_batch(session, location_updates)
 
-    for eid in result_ids:
-        if eid is not None:
-            await invalidate_entity_caches(eid)
+    if len(entities) > 20:
+        await invalidate_all_caches()
+    else:
+        for eid in result_ids:
+            if eid is not None:
+                await invalidate_entity_caches(eid)
 
     await session.commit()
 

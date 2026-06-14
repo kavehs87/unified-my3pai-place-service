@@ -337,3 +337,95 @@ async def test_bulk_upsert_concurrent_no_conflict(engine):
     result_a, result_b = await asyncio.gather(upsert_a(), upsert_b())
     assert len(result_a) == 1
     assert len(result_b) == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_upsert_large_batch_uses_full_cache_invalidation(engine):
+    """Large bulk upsert (>=21 entities) should use invalidate_all_caches for O(1) invalidation."""
+    from unittest.mock import patch
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlmodel import text as sql_text
+    from sqlmodel.ext.asyncio.session import AsyncSession
+
+    from dmo.models.schemas import EntityCreate
+    from dmo.services import write as write_module
+    from dmo.services.write import bulk_upsert
+
+    async_session = async_sessionmaker(engine, class_=AsyncSession)
+
+    entities = []
+    for i in range(25):
+        entities.append(EntityCreate(
+            source="test_bulk_cache",
+            source_id=f"cache_test_{i}",
+            name=f"Bulk Cache Entity {i}",
+            place_type="point_of_interest",
+        ))
+
+    invalidation_calls = []
+
+    async def fake_invalidate_all():
+        invalidation_calls.append("all")
+
+    async def fake_invalidate_entity(eid):
+        invalidation_calls.append(("entity", eid))
+
+    with patch.object(write_module, "invalidate_all_caches", fake_invalidate_all):
+        with patch.object(write_module, "invalidate_entity_caches", fake_invalidate_entity):
+            async with async_session() as session:
+                await session.exec(sql_text("DELETE FROM routes"))
+                await session.exec(sql_text("DELETE FROM classifications"))
+                await session.exec(sql_text("DELETE FROM media"))
+                await session.exec(sql_text("DELETE FROM entities"))
+                await session.commit()
+                await bulk_upsert(session, entities)
+
+    assert len(invalidation_calls) == 1
+    assert invalidation_calls[0] == "all"
+
+
+@pytest.mark.asyncio
+async def test_bulk_upsert_small_batch_uses_per_entity_invalidation(engine):
+    """Small bulk upsert (<21 entities) should use per-entity cache invalidation."""
+    from unittest.mock import patch
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlmodel import text as sql_text
+    from sqlmodel.ext.asyncio.session import AsyncSession
+
+    from dmo.models.schemas import EntityCreate
+    from dmo.services import write as write_module
+    from dmo.services.write import bulk_upsert
+
+    async_session = async_sessionmaker(engine, class_=AsyncSession)
+
+    entities = []
+    for i in range(5):
+        entities.append(EntityCreate(
+            source="test_bulk_small",
+            source_id=f"small_cache_{i}",
+            name=f"Small Bulk Entity {i}",
+            place_type="point_of_interest",
+        ))
+
+    invalidation_calls = []
+
+    async def fake_invalidate_all():
+        invalidation_calls.append("all")
+
+    async def fake_invalidate_entity(eid):
+        invalidation_calls.append(("entity", eid))
+
+    with patch.object(write_module, "invalidate_all_caches", fake_invalidate_all):
+        with patch.object(write_module, "invalidate_entity_caches", fake_invalidate_entity):
+            async with async_session() as session:
+                await session.exec(sql_text("DELETE FROM routes"))
+                await session.exec(sql_text("DELETE FROM classifications"))
+                await session.exec(sql_text("DELETE FROM media"))
+                await session.exec(sql_text("DELETE FROM entities"))
+                await session.commit()
+                await bulk_upsert(session, entities)
+
+    assert len(invalidation_calls) == 5
+    assert all(isinstance(c, tuple) and c[0] == "entity" for c in invalidation_calls)
