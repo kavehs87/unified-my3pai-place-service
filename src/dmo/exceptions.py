@@ -17,12 +17,25 @@ class AppError(Exception):
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        logger.error(
-            "request.error",
-            status_code=exc.status_code,
-            detail=exc.detail,
-            path=request.url.path,
-        )
+        if exc.status_code == 429:
+            logger.warning(
+                "request.rate_limited",
+                status_code=exc.status_code,
+                path=request.url.path,
+            )
+        elif exc.status_code >= 500:
+            logger.error(
+                "request.error",
+                status_code=exc.status_code,
+                detail=exc.detail,
+                path=request.url.path,
+            )
+        else:
+            logger.info(
+                "request.client_error",
+                status_code=exc.status_code,
+                path=request.url.path,
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={

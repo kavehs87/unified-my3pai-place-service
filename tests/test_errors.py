@@ -158,6 +158,7 @@ async def test_request_id_header_invalid_uuid_generates_new_id(client: AsyncClie
     request_id = data["request_id"]
     # Should be a valid UUID (not the invalid string we sent)
     from uuid import UUID
+
     UUID(request_id)
     assert request_id != "not-a-uuid"
 

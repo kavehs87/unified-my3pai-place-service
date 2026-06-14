@@ -47,8 +47,14 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=[
-        {"name": "Read", "description": "Public read endpoints — search, nearby, map, detail, classifications"},
-        {"name": "Write", "description": "Authenticated write endpoints — create, update, delete (requires X-API-Key)"},
+        {
+            "name": "Read",
+            "description": "Public read endpoints — search, nearby, map, detail, classifications",
+        },
+        {
+            "name": "Write",
+            "description": "Authenticated write endpoints — create, update, delete (requires X-API-Key)",
+        },
         {"name": "System", "description": "Health and metrics endpoints"},
     ],
     swagger_ui_parameters={"defaultModelsExpandDepth": -1},
@@ -103,12 +109,6 @@ async def metrics_middleware(request: Request, call_next):
     return response
 
 
-app.include_router(router)
-app.include_router(health_router)
-app.include_router(metrics_router)
-register_exception_handlers(app)
-
-
 @app.middleware("http")
 async def timeout_middleware(request: Request, call_next):
     if request.url.path in ("/health", "/metrics", "/docs", "/redoc", "/openapi.json"):
@@ -125,3 +125,9 @@ async def timeout_middleware(request: Request, call_next):
                 "request_id": getattr(request.state, "request_id", ""),
             },
         )
+
+
+app.include_router(router)
+app.include_router(health_router)
+app.include_router(metrics_router)
+register_exception_handlers(app)

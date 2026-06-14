@@ -220,7 +220,11 @@ async def categories_endpoint(
     return TypeAdapter(list[str]).validate_python(json.loads(fallback_json))
 
 
-@router.get("/classifications", response_model=CursorPaginatedResponse[ClassificationListItem], tags=["Read"])
+@router.get(
+    "/classifications",
+    response_model=CursorPaginatedResponse[ClassificationListItem],
+    tags=["Read"],
+)
 async def classifications_endpoint(
     session: SessionDep,
     entity_id: str | None = Query(None, max_length=500),
