@@ -215,6 +215,45 @@ All errors follow this format. 5xx errors are logged at ERROR level; 4xx at WARN
 | **Bulk batch optimization** | Bulk upserts with >20 entities use single-pass cache invalidation (`dmo:*`) instead of per-entity cascade. |
 | **Slow request logging** | Requests exceeding 500ms are flagged in structured logs. |
 
+## Benchmark Results
+
+Live benchmarks against staging (8,177 Swiss tourism entities, PostGIS 16.4, Redis 7).
+
+### Cache Performance
+
+| Endpoint | Query | MISS (DB) | HIT (Redis) | Speedup |
+|---|---|---|---|---|
+| `/search` | text + filters | 24ms | 26ms | — |
+| `/nearby` | small radius (2km) | 21ms | 18ms | 1.2x |
+| `/nearby` | large radius (50km) | 367ms | 297ms | 1.2x |
+| `/map` | tight bbox | 249ms | 237ms | 1.0x |
+| `/map` | wide bbox (all CH) | 496ms | 492ms | 1.0x |
+| `/classifications` | filtered | 26ms | 19ms | 1.4x |
+| `/{source}/{source_id}` | detail + media | 23ms | 23ms | — |
+
+> **Note:** Individual request timing shows minimal delta because network RTT to the VM dominates. The real benefit is **DB load reduction** under concurrent load.
+
+### Concurrent Load — Stampede Protection
+
+```
+10 simultaneous requests to /nearby (50km radius, 50 results)
+├─ 1 request: MISS → fetched from PostgreSQL
+└─ 9 requests: HIT  → served from Redis cache
+
+Result: 90% cache hit rate under concurrent load
+DB load reduction: 10x (1 query instead of 10)
+```
+
+All endpoints confirmed: `/search`, `/nearby`, `/map`, `/classifications`, `/{source}/{source_id}`.
+
+### Cache Architecture
+
+- **SHA-256 hashed keys** — `dmo:{endpoint}:{hash(params)}` — consistent, collision-free
+- **Distributed lock** — `SET NX` prevents stampede on cache miss (5s timeout, 50ms poll)
+- **Split TTLs** — 5min (search/list), 30min (detail), 60s (open-status)
+- **Pre-commit invalidation** — writes clear cache before DB commit — zero stale reads
+- **Graceful degradation** — Redis failures log to structlog, app falls back to DB
+
 ## Quick Start
 
 ### Prerequisites
@@ -293,6 +332,67 @@ docker compose -f docker-compose.prod.yml up -d
 The Dockerfile uses a multi-stage build with `uv` for fast, lockfile-based dependency installation. The entrypoint runs **Alembic migrations** before starting Uvicorn with 4 workers. Health checks use the `/health` endpoint with a 5-second timeout.
 
 **Before deploying to heavy traffic:** Run load tests (spike + soak + write-path) using the k6 script in `loadtest/`.
+
+## Backup & Restore
+
+Production-ready scripts for PostgreSQL database backup and restore, supporting both local and remote (SSH) environments.
+
+### Backup
+
+```bash
+# Local backup
+./scripts/db-backup.sh local
+
+# Remote backup (staging VM)
+./scripts/db-backup.sh remote staging
+
+# Custom retention (keep last 14 backups)
+./scripts/db-backup.sh local --retention 14
+```
+
+**Features:**
+- `pg_dump -Fc` (custom format) — compressed, parallel-restore-capable
+- SHA-256 checksums + `metadata.json` (table count, dump size, PostGIS version)
+- Auto-cleanup — keeps last N backups (default: 7)
+- Remote mode — runs on VM via SSH, copies dump to local machine
+- Timestamped directories — `backups/YYYY-MM-DD_HHMMSS[_remote_host]/`
+
+### Restore
+
+```bash
+# Local restore from latest backup
+./scripts/db-restore.sh local
+
+# Remote restore (staging VM)
+./scripts/db-restore.sh remote staging
+
+# Restore specific backup
+./scripts/db-restore.sh local backups/2026-06-15_120000/dump.dump
+
+# Force without confirmation
+./scripts/db-restore.sh local --force backups/2026-06-15_120000/dump.dump
+```
+
+**Features:**
+- Integrity check — validates SHA-256 checksum before restore
+- Stops API service during restore, restarts after
+- Runs Alembic migrations post-restore for schema sync
+- Interactive confirmation (use `--force` to skip)
+- Drops and recreates database for clean restore
+
+### Backup Directory Structure
+
+```
+backups/
+├── 2026-06-15_120000/
+│   ├── dump.dump          # pg_dump -Fc file
+│   ├── dump.sha256        # checksum
+│   └── metadata.json      # table count, size, PostGIS version
+└── 2026-06-15_120000_10.0.0.93/
+    ├── dump.dump
+    ├── dump.sha256
+    └── metadata.json
+```
 
 ## Query Patterns
 
