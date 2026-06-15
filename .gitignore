@@ -7,3 +7,4 @@ plans/
 AGENTS.md
 .DS_Store
 .env.staging
+backups/
