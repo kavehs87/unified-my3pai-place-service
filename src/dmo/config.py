@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     api_key: str = ""
     slow_request_threshold_ms: float = 500.0
     trust_proxy_headers: bool = True
+    cache_debug: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

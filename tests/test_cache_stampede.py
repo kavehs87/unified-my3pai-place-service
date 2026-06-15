@@ -66,7 +66,7 @@ async def test_stampede_cache_hit_bypasses_lock():
         mock_get_cache.return_value = fake_client
 
         result = await cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
-        assert result == '{"results": []}'
+        assert result == ('{"results": []}', "HIT")
         fake_client.set.assert_not_called()
 
 
@@ -137,7 +137,7 @@ async def test_stampede_waiter_gets_cached_result():
         results = await asyncio.gather(*tasks)
 
     assert fetch_count == 1
-    assert all(r == '{"results": [1]}' for r in results)
+    assert all(r[0] == '{"results": [1]}' for r in results)
 
 
 @pytest.mark.asyncio
@@ -157,7 +157,7 @@ async def test_stampede_stale_lock_fallback():
 
         result = await cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
 
-    assert result is None
+    assert result == (None, "MISS")
 
 
 @pytest.mark.asyncio
@@ -192,7 +192,7 @@ async def test_stampede_double_check_after_lock():
 
         result = await cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
 
-    assert result == '{"results": []}'
+    assert result == ('{"results": []}', "HIT")
 
 
 @pytest.mark.asyncio
@@ -237,7 +237,7 @@ async def test_stampede_waiter_retry_matches_lock_timeout():
         result = await cache_module.cache_get_or_set("search", {"q": "test"}, fetch_fn=fetch_fn)
 
     # Should fall through after all retries (matching lock timeout)
-    assert result is None
+    assert result == (None, "MISS")
     # Verify retry count matches lock timeout / retry delay
     expected_retries = int(cache_module._LOCK_TIMEOUT / cache_module._STAMPEDE_RETRY_DELAY)
     # get is called: initial miss + expected_retries polls

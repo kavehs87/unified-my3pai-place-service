@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 from collections.abc import Callable, Coroutine
+from typing import Literal
 
 import redis.asyncio as redis
 import structlog
@@ -12,6 +13,8 @@ from dmo.metrics import CACHE_HITS, CACHE_MISSES
 _cache: redis.Redis | None = None
 _cache_lock = asyncio.Lock()
 logger = structlog.get_logger()
+
+CacheStatus = Literal["HIT", "MISS"]
 
 _LOCK_TIMEOUT = 5
 _STAMPEDE_RETRY_DELAY = 0.05
@@ -70,8 +73,11 @@ async def cache_get_or_set(
     params: dict[str, str | int | float | None],
     fetch_fn: Callable[[], Coroutine[None, None, str]],
     ttl: int | None = None,
-) -> str | None:
-    """Get from cache, or acquire lock and fetch. Prevents stampede on cache miss."""
+) -> tuple[str | None, CacheStatus]:
+    """Get from cache, or acquire lock and fetch. Prevents stampede on cache miss.
+
+    Returns (value, cache_status) where cache_status is "HIT" or "MISS".
+    """
     client = await get_cache()
     key = _make_key(endpoint, params)
     lock_key = f"{key}:lock"
@@ -80,9 +86,13 @@ async def cache_get_or_set(
     value = await client.get(key)
     if value is not None:
         CACHE_HITS.inc()
-        return value
+        if settings.cache_debug:
+            logger.info("cache_hit", endpoint=endpoint, key=key)
+        return value, "HIT"
 
     CACHE_MISSES.inc()
+    if settings.cache_debug:
+        logger.info("cache_miss", endpoint=endpoint, key=key)
 
     # Try to acquire lock (SET NX)
     acquired = await client.set(lock_key, "1", nx=True, ex=_LOCK_TIMEOUT)
@@ -94,20 +104,22 @@ async def cache_get_or_set(
             value = await client.get(key)
             if value is not None:
                 CACHE_HITS.inc()
-                return value
+                if settings.cache_debug:
+                    logger.info("cache_hit", endpoint=endpoint, key=key)
+                return value, "HIT"
         # Lock timed out or fetch too slow — fall through to fetch without lock
-        return None
+        return None, "MISS"
 
     try:
         # Double-check cache after acquiring lock
         value = await client.get(key)
         if value is not None:
-            return value
+            return value, "HIT"
 
         # Fetch, cache, return
         result = await fetch_fn()
         await client.set(key, result, ex=ttl or settings.cache_ttl)
-        return result
+        return result, "MISS"
     finally:
         await client.delete(lock_key)
 

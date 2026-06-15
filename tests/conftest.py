@@ -38,8 +38,8 @@ def _disable_cache(request):
 
     async def _no_op_get_or_set(*args, fetch_fn=None, **kwargs):
         if fetch_fn:
-            return await fetch_fn()
-        return None
+            return await fetch_fn(), "MISS"
+        return None, "MISS"
 
     # Don't patch cache_get_or_set for stampede tests
     is_stampede = "test_cache_stampede" in (

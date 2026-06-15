@@ -2,6 +2,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import TypeAdapter
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -99,13 +100,16 @@ async def search_endpoint(
         )
         return json.dumps(result.model_dump(mode="json"))
 
-    cached = await cache_get_or_set("search", search_params, fetch_fn=_fetch_search)
+    cached, cache_status = await cache_get_or_set("search", search_params, fetch_fn=_fetch_search)
     if cached:
-        return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
-
-    fallback_json = await _fetch_search()
-    await cache_set_async("search", search_params, fallback_json)
-    return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
+    else:
+        fallback_json = await _fetch_search()
+        await cache_set_async("search", search_params, fallback_json)
+        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
+    )
 
 
 @router.get("/nearby", response_model=CursorPaginatedResponse[EntityListItem], tags=["Read"])
@@ -138,13 +142,18 @@ async def nearby_endpoint(
         )
         return json.dumps(result.model_dump(mode="json"))
 
-    cached = await cache_get_or_set("nearby", nearby_params, fetch_fn=_fetch_nearby, ttl=300)
+    cached, cache_status = await cache_get_or_set(
+        "nearby", nearby_params, fetch_fn=_fetch_nearby, ttl=300
+    )
     if cached:
-        return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
-
-    fallback_json = await _fetch_nearby()
-    await cache_set_async("nearby", nearby_params, fallback_json, ttl=300)
-    return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
+    else:
+        fallback_json = await _fetch_nearby()
+        await cache_set_async("nearby", nearby_params, fallback_json, ttl=300)
+        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
+    )
 
 
 @router.get("/map", response_model=CursorPaginatedResponse[EntityListItem], tags=["Read"])
@@ -194,13 +203,16 @@ async def map_endpoint(
         )
         return json.dumps(result.model_dump(mode="json"))
 
-    cached = await cache_get_or_set("map", map_params, fetch_fn=_fetch_map)
+    cached, cache_status = await cache_get_or_set("map", map_params, fetch_fn=_fetch_map)
     if cached:
-        return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
-
-    fallback_json = await _fetch_map()
-    await cache_set_async("map", map_params, fallback_json)
-    return CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
+    else:
+        fallback_json = await _fetch_map()
+        await cache_set_async("map", map_params, fallback_json)
+        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
+    )
 
 
 @router.get("/classifications/categories", response_model=list[str], tags=["Read"])
@@ -211,13 +223,14 @@ async def categories_endpoint(
         categories = await list_categories_service(session)
         return json.dumps(categories)
 
-    cached = await cache_get_or_set("categories", {}, fetch_fn=_fetch_categories)
+    cached, cache_status = await cache_get_or_set("categories", {}, fetch_fn=_fetch_categories)
     if cached:
-        return TypeAdapter(list[str]).validate_python(json.loads(cached))
-
-    fallback_json = await _fetch_categories()
-    await cache_set_async("categories", {}, fallback_json)
-    return TypeAdapter(list[str]).validate_python(json.loads(fallback_json))
+        result = TypeAdapter(list[str]).validate_python(json.loads(cached))
+    else:
+        fallback_json = await _fetch_categories()
+        await cache_set_async("categories", {}, fallback_json)
+        result = TypeAdapter(list[str]).validate_python(json.loads(fallback_json))
+    return JSONResponse(content=result, headers={"X-Cache-Status": cache_status})
 
 
 @router.get(
@@ -250,15 +263,20 @@ async def classifications_endpoint(
         )
         return json.dumps(result.model_dump(mode="json"))
 
-    cached = await cache_get_or_set(
+    cached, cache_status = await cache_get_or_set(
         "classifications", classif_params, fetch_fn=_fetch_classifications
     )
     if cached:
-        return CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(cached))
-
-    fallback_json = await _fetch_classifications()
-    await cache_set_async("classifications", classif_params, fallback_json)
-    return CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(fallback_json))
+        result = CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(cached))
+    else:
+        fallback_json = await _fetch_classifications()
+        await cache_set_async("classifications", classif_params, fallback_json)
+        result = CursorPaginatedResponse[ClassificationListItem].model_validate(
+            json.loads(fallback_json)
+        )
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
+    )
 
 
 @router.get("/{source}/{source_id}", response_model=EntityDetail, tags=["Read"])
@@ -279,7 +297,9 @@ async def detail_endpoint(
         detail_dict["closes_at"] = None
         return json.dumps(detail_dict)
 
-    cached = await cache_get_or_set("detail", detail_params, fetch_fn=_fetch_detail, ttl=1800)
+    cached, cache_status = await cache_get_or_set(
+        "detail", detail_params, fetch_fn=_fetch_detail, ttl=1800
+    )
     if cached:
         detail = EntityDetail.model_validate(json.loads(cached))
     else:
@@ -295,7 +315,7 @@ async def detail_endpoint(
 
     from dmo.models.schemas import OpenStatus
 
-    open_cached = await cache_get_or_set(
+    open_cached, open_cache_status = await cache_get_or_set(
         "open_status", detail_params, fetch_fn=_fetch_open_status, ttl=60
     )
     open_status: OpenStatus | None = None
@@ -306,7 +326,13 @@ async def detail_endpoint(
         detail.is_open = open_status.is_open
         detail.opens_at = open_status.opens_at
         detail.closes_at = open_status.closes_at
-    return detail
+
+    combined_status = (
+        cache_status if cache_status == open_cache_status else f"{cache_status}+{open_cache_status}"
+    )
+    return JSONResponse(
+        content=detail.model_dump(mode="json"), headers={"X-Cache-Status": combined_status}
+    )
 
 
 @router.post("/entities", status_code=201, tags=["Write"])
