@@ -235,6 +235,50 @@ All errors follow this format. 5xx errors are logged at ERROR level; 4xx at WARN
 | **Bulk batch optimization** | Bulk upserts with >20 entities use single-pass cache invalidation (`dmo:*`) instead of per-entity cascade. |
 | **Slow request logging** | Requests exceeding 500ms are flagged in structured logs. |
 
+## Data Inventory
+
+Current staging dataset: **Swiss DMO** (myswitzerland.com) — 8,177 entities, single source.
+
+### Place Type Distribution
+
+| Type | Count | % |
+|---|---|---|
+| destination | 4,096 | 50% |
+| tour | 2,550 | 31% |
+| attraction | 1,531 | 19% |
+
+### Data Richness
+
+| Field | Coverage | Notes |
+|---|---|---|
+| Coordinates | **94%** | 7,687 entities — spatial queries ready |
+| Website | **100%** | Source URLs on every entity |
+| Attributes (JSONB) | **100%** | Tour routes, geojson, SwissMobility data |
+| Media (thumbnail) | **34%** | 2,802 entities with images |
+| Classifications | **64 categories** | seasons, difficulty, swisstainable, wheelchair, MTB, etc. |
+
+### Classification Depth
+
+| Category | Values |
+|---|---|
+| seasons | 2,729 |
+| swisstainable | 703 |
+| wheelchairaccessibleclassifications | 187 |
+| routetypesmtb | 101 |
+| difficulty | 73 |
+
+### Tour Data Attributes
+
+| Attribute | Populated | Meaning |
+|---|---|---|
+| `geojson` | 35% | Route geometry |
+| `distance_km` | 16% | Tour distance |
+| `ascent_m` / `descent_m` | 15-16% | Elevation gain/loss |
+| `duration_min` | 11% | Estimated time |
+| `sm_url` / `sm_route` | 16% | SwissMobility integration |
+
+**Gaps:** Ratings, opening hours, phone numbers not present in source. Media at 34% — enrichment possible via OSM imagery or external feeds.
+
 ## Benchmark Results
 
 Live benchmarks against staging (8,177 Swiss tourism entities, PostGIS 16.4, Redis 7).
