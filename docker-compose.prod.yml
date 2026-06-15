@@ -16,8 +16,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "8"
-          memory: 4G
+          cpus: "4"
+          memory: 2G
 
   db:
     image: postgis/postgis:16-3.4
