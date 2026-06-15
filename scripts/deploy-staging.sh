@@ -99,14 +99,13 @@ EXCLUDES=(
   "plans/"
   "docs/"
   ".env"
-  ".env.*"
+  ".env.staging"
   ".DS_Store"
   "*.egg-info"
   ".opencode/"
   "opencode.json"
   "opencode.jsonc"
   "AGENTS.md"
-  ".env.staging"
   "*.swp"
   "*~"
 )
@@ -158,6 +157,17 @@ run_ssh "mkdir -p ${STAGING_PATH}"
 # Run rsync
 rsync -azvh --delete -e "$RSYNC_SSH" "${EXCLUDE_ARGS[@]}" ./ "${STAGING_USER}@${STAGING_HOST}:${STAGING_PATH}/"
 success "Files synced to ${STAGING_PATH}"
+
+# ─── Step 2b: Provision .env ────────────────────────────────────────────────
+if ! run_ssh "test -f ${STAGING_PATH}/.env"; then
+  if [[ -f .env.template ]]; then
+    info "Provisioning .env from .env.template..."
+    run_ssh "cp ${STAGING_PATH}/.env.template ${STAGING_PATH}/.env"
+    success ".env created — edit on VM to set production secrets"
+  else
+    warn ".env.template not found — ensure .env exists on VM manually"
+  fi
+fi
 
 if $SYNC_ONLY; then
   success "Sync-only mode — skipping Docker deployment"
