@@ -6,6 +6,26 @@ A provider-agnostic data store and query API for tourism and POI data. Ingests p
 
 ---
 
+## Why This Exists
+
+A Laravel + MySQL monolith was struggling with three problems: **slow geo queries** (custom Haversine, no spatial index), **schema bloat** (every new DMO meant migrations), and **data dependency** (tied to Google Places API, OSM data forced into wrong schema).
+
+This project replaces that with a provider-agnostic, spatially-optimized microservice — treating place data as a first-class concern, not an afterthought bolted onto a web framework.
+
+### Laravel + MySQL vs. Unified Place Service
+
+| Aspect | Laravel + MySQL (Before) | Unified Place Service (Now) |
+|---|---|---|
+| **Spatial queries** | Slow custom Haversine in MySQL, no spatial index | PostGIS GIST — `ST_DWithin`, `ST_Intersects` native |
+| **New DMO support** | Schema migration per provider (`google_*`, `osm_*`, `swiss_*` columns) | Zero schema changes — `source` VARCHAR + JSONB overflow |
+| **Data ownership** | Dependent on Google Places API + scattered imports | Own database — OSM, DMO feeds, custom imports all fit |
+| **Architecture** | Monolith — web app couples UI logic with data storage | Dedicated microservice — clean API boundary |
+| **Performance** | N+1 queries, no caching, OFFSET pagination | Async, Redis cache (90% hit rate), cursor pagination |
+| **Concurrency** | MySQL locks under bulk import | Advisory locks, per-source serialization, concurrent imports |
+| **Search** | Basic `LIKE` queries, full table scans | pg_trgm GIN index — fuzzy text search on 8k+ entities |
+| **Extensibility** | Every new field = migration + code change | JSONB `attributes` — new fields emerge from data |
+| **Geo-migration** | Forcing OSM data into MySQL schema designed for Google | Normalized schema — any provider maps naturally |
+
 ## Problem
 
 Tourism data arrives from many sources — Google Places, national DMOs, local providers, open datasets — each with its own schema, field naming, and data model. Building a unified query layer on top of heterogeneous sources typically means either:
