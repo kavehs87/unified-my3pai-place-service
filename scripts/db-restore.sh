@@ -260,15 +260,24 @@ success "Database recreated: ${DB_NAME}"
 info "=== Step 5: Restoring database ==="
 
 if $REMOTE_MODE; then
-  REMOTE_DUMP="/tmp/dump.restore.dump"
-  info "Uploading dump to remote..."
-  run_scp "$RESTORE_FILE" "${STAGING_USER}@${STAGING_HOST}:${REMOTE_DUMP}"
+  HOST_DUMP="${STAGING_PATH}/tmp/dump.restore.dump"
+  CONTAINER_DUMP="/tmp/dump.restore.dump"
+  info "Uploading dump to remote host..."
+  run_ssh "mkdir -p ${STAGING_PATH}/tmp"
+  run_scp "$RESTORE_FILE" "${STAGING_USER}@${STAGING_HOST}:${HOST_DUMP}"
+  info "Copying dump from host to container..."
+  if ! run_ssh "cd ${STAGING_PATH} && docker compose -f ${COMPOSE_FILE} cp ${HOST_DUMP} db:${CONTAINER_DUMP}"; then
+    run_ssh "rm -f ${HOST_DUMP}" || true
+    die "Failed to copy dump into container"
+  fi
   info "Running pg_restore on remote..."
-  if ! run_ssh "cd ${STAGING_PATH} && docker compose -f ${COMPOSE_FILE} exec -T db pg_restore -U \${POSTGRES_USER:-postgres} -d \${POSTGRES_DB:-dmo} --no-owner --no-privileges ${REMOTE_DUMP}"; then
-    run_ssh "rm -f ${REMOTE_DUMP}" || true
+  if ! run_ssh "cd ${STAGING_PATH} && docker compose -f ${COMPOSE_FILE} exec -T db pg_restore -U \${POSTGRES_USER:-postgres} -d \${POSTGRES_DB:-dmo} --no-owner --no-privileges ${CONTAINER_DUMP}"; then
+    run_ssh "rm -f ${HOST_DUMP}" || true
+    run_ssh "cd ${STAGING_PATH} && docker compose -f ${COMPOSE_FILE} exec -T db rm -f ${CONTAINER_DUMP}" || true
     die "Remote pg_restore failed"
   fi
-  run_ssh "rm -f ${REMOTE_DUMP}" || true
+  run_ssh "rm -f ${HOST_DUMP}" || true
+  run_ssh "cd ${STAGING_PATH} && docker compose -f ${COMPOSE_FILE} exec -T db rm -f ${CONTAINER_DUMP}" || true
 else
   TMPFILE="/tmp/dump.restore.dump"
   info "Copying dump to container..."
