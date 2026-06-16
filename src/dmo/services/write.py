@@ -358,47 +358,60 @@ async def bulk_upsert(
             new_entity_indices.append(i)
             result_ids.append(None)
 
-    if new_entities:
-        session.add_all(new_entities)
+    pending: list[Entity] = new_entities if new_entities else []
+    pending_indices: list[int] = new_entity_indices if new_entity_indices else []
+    max_retries = 3
 
-    try:
-        await session.flush()
-    except IntegrityError:
-        await session.rollback()
-        # Re-acquire advisory lock — rollback released the xact lock
-        await session.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=lock_id)
-        )
-        # Re-check which entities now exist (concurrent bulk may have inserted them)
-        rechecked = (
-            await session.exec(
-                select(Entity).where(
-                    tuple_(Entity.source, Entity.source_id).in_(
-                        [(e.source, e.source_id) for e in new_entities]
+    for _ in range(max_retries):
+        if not pending:
+            break
+
+        session.add_all(pending)
+
+        try:
+            await session.flush()
+            break
+        except IntegrityError:
+            await session.rollback()
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=lock_id)
+            )
+            rechecked = (
+                await session.exec(
+                    select(Entity).where(
+                        tuple_(Entity.source, Entity.source_id).in_(
+                            [(e.source, e.source_id) for e in pending]
+                        )
                     )
                 )
+            ).all()
+            rechecked_map = {(e.source, e.source_id): e for e in rechecked}
+
+            still_new: list[Entity] = []
+            still_new_indices: list[int] = []
+
+            for idx, entity in zip(pending_indices, pending):
+                key = (entity.source, entity.source_id)
+                if key in rechecked_map:
+                    existing = rechecked_map[key]
+                    for field_name in Entity.model_fields:
+                        val = getattr(entity, field_name, None)
+                        if field_name not in ("id", "imported_at", "updated_at"):
+                            setattr(existing, field_name, val)
+                    result_ids[idx] = existing.id
+                    if entity.latitude is not None and entity.longitude is not None:
+                        location_updates.append((existing.id, entity.longitude, entity.latitude))
+                else:
+                    still_new.append(entity)
+                    still_new_indices.append(idx)
+
+            pending = still_new
+            pending_indices = still_new_indices
+    else:
+        if pending:
+            raise EntityError(
+                f"Failed to insert {len(pending)} entity(ies) after {max_retries} retries"
             )
-        ).all()
-        rechecked_map = {(e.source, e.source_id): e for e in rechecked}
-
-        still_new: list[Entity] = []
-        for idx, entity in zip(new_entity_indices, new_entities):
-            key = (entity.source, entity.source_id)
-            if key in rechecked_map:
-                existing = rechecked_map[key]
-                for field_name in Entity.model_fields:
-                    val = getattr(entity, field_name, None)
-                    if field_name not in ("id", "created_at", "updated_at"):
-                        setattr(existing, field_name, val)
-                result_ids[idx] = existing.id
-                if entity.latitude is not None and entity.longitude is not None:
-                    location_updates.append((existing.id, entity.longitude, entity.latitude))
-            else:
-                still_new.append(entity)
-
-        if still_new:
-            session.add_all(still_new)
-            await session.flush()
 
     # Resolve IDs for new entities
     for idx, entity in zip(new_entity_indices, new_entities):
