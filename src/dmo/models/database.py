@@ -57,7 +57,7 @@ class Entity(SQLModel, table=True):
     )
     latitude: float | None = Field(default=None, sa_column=Column(Float))
     longitude: float | None = Field(default=None, sa_column=Column(Float))
-    country: str | None = Field(default=None, sa_column=Column(String(10)))
+    country: str | None = Field(default=None, sa_column=Column(String(100)))
     region: str | None = Field(default=None, sa_column=Column(String(255)))
     locality: str | None = Field(default=None, sa_column=Column(String(255)))
     region_names: list[str] | None = Field(default=None, sa_column=Column(ARRAY(String(255))))
