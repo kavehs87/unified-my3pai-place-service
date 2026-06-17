@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from sqlalchemy import tuple_
@@ -16,6 +17,8 @@ from dmo.models.schemas import (
     MediaCreateResponse,
 )
 from dmo.services.cache import cache_delete_pattern
+
+logger = logging.getLogger(__name__)
 
 
 class EntityError(Exception):
@@ -252,6 +255,24 @@ async def bulk_upsert(
     if not entities:
         return []
 
+    # Deduplicate batch: last entry wins for same (source, source_id)
+    seen: dict[tuple[str, str], int] = {}
+    deduped: list[EntityCreate] = []
+    for _i, data in enumerate(entities):
+        key = (data.source, data.source_id)
+        if key in seen:
+            deduped[seen[key]] = data
+        else:
+            seen[key] = len(deduped)
+            deduped.append(data)
+    if len(deduped) < len(entities):
+        logger.warning(
+            "Bulk upsert batch deduplicated: %d -> %d entities",
+            len(entities),
+            len(deduped),
+        )
+    entities = deduped
+
     # Scope advisory lock by source so different sources don't serialize
     # (all entities in a single bulk call share the same source by convention)
     source = entities[0].source
@@ -361,6 +382,7 @@ async def bulk_upsert(
     pending: list[Entity] = new_entities if new_entities else []
     pending_indices: list[int] = new_entity_indices if new_entity_indices else []
     max_retries = 3
+    last_integrity_error: IntegrityError | None = None
 
     for _ in range(max_retries):
         if not pending:
@@ -371,7 +393,12 @@ async def bulk_upsert(
         try:
             await session.flush()
             break
-        except IntegrityError:
+        except IntegrityError as exc:
+            last_integrity_error = exc
+            logger.warning(
+                "Bulk upsert IntegrityError (retrying): %s",
+                str(exc),
+            )
             await session.rollback()
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(lock_id=lock_id)
@@ -409,8 +436,9 @@ async def bulk_upsert(
             pending_indices = still_new_indices
     else:
         if pending:
+            cause = f": {last_integrity_error}" if last_integrity_error else ""
             raise EntityError(
-                f"Failed to insert {len(pending)} entity(ies) after {max_retries} retries"
+                f"Failed to insert {len(pending)} entity(ies) after {max_retries} retries{cause}"
             )
 
     # Resolve IDs for new entities
