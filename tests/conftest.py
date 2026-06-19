@@ -2,9 +2,15 @@ import os
 
 # Override env vars for local testing before any dmo imports.
 # .env has Docker hostnames (db, redis); tests need localhost.
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
-os.environ["DATABASE_URL_SYNC"] = "postgresql+psycopg2://postgres:postgres@localhost:5432/dmo"
-os.environ["REDIS_URL"] = "redis://localhost:6379/0"
+# If TEST_DB_URL is set (e.g., staging container), use it instead of localhost.
+test_db_url = os.environ.get(
+    "TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
+)
+os.environ["DATABASE_URL"] = test_db_url
+os.environ["DATABASE_URL_SYNC"] = test_db_url.replace("asyncpg", "psycopg2")
+os.environ["REDIS_URL"] = os.environ.get(
+    "TEST_REDIS_URL", "redis://localhost:6379/0"
+)
 
 import pytest
 from httpx import ASGITransport, AsyncClient
