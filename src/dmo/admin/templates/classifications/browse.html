@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Classifications</h2>
+  <p>Browse classifications by category and value</p>
+</div>
+
+<div class="card">
+  <form hx-get="/admin/classifications" hx-target="#classif-results" hx-trigger="submit" hx-push-url="true" class="mb-4">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="category">Category</label>
+        <select name="category" id="category">
+          <option value="">All categories</option>
+          {% for c in categories %}
+          <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="value_code">Value Code</label>
+        <input type="text" name="value_code" id="value_code" value="{{ value_code or '' }}" placeholder="e.g. museum, park...">
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="/admin/classifications" class="btn btn-outline">Clear</a>
+    </div>
+  </form>
+</div>
+
+<div id="classif-results">
+  <table>
+    <thead>
+      <tr><th>Entity ID</th><th>Category</th><th>Value Code</th><th>Value Title</th></tr>
+    </thead>
+    <tbody>
+    {% for c in classifications %}
+    <tr>
+      <td><a href="/admin/entities/{{ c.entity_id }}">{{ c.entity_id|truncate(12) }}</a></td>
+      <td>{{ c.category }}</td>
+      <td><span class="badge badge-type">{{ c.value_code }}</span></td>
+      <td>{{ c.value_title or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--text-muted);">No classifications found</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if total > page_size %}
+  <div class="pagination">
+    {% if cursor %}
+    <a href="/admin/classifications?category={{ category or '' }}&value_code={{ value_code or '' }}&cursor={{ cursor }}" class="btn btn-outline btn-sm">Next</a>
+    {% endif %}
+    <span style="color:var(--text-muted);font-size:0.8rem;">{{ total }} total</span>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

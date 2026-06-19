@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     trust_proxy_headers: bool = True
     cache_debug: bool = False
 
+    admin_username: str = "admin"
+    admin_password: str = "admin"
+    admin_settings_path: str = "/data/admin_settings.json"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

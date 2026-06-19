@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Dashboard</h2>
+  <p>Overview of the DMO data store</p>
+</div>
+
+<div class="card-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.total_entities }}</div>
+    <div class="stat-label">Total Entities</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.total_media }}</div>
+    <div class="stat-label">Media Items</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.total_classifications }}</div>
+    <div class="stat-label">Classifications</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.sources|length }}</div>
+    <div class="stat-label">Data Sources</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Entities by Source</h3>
+  <table>
+    <thead><tr><th>Source</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for s in stats.sources %}
+    <tr>
+      <td><span class="badge badge-source">{{ s.source }}</span></td>
+      <td>{{ s.count }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Entities by Type</h3>
+  <table>
+    <thead><tr><th>Place Type</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for t in stats.place_types %}
+    <tr>
+      <td><span class="badge badge-type">{{ t.place_type }}</span></td>
+      <td>{{ t.count }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

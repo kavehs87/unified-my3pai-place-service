@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from dmo.admin.router import router as admin_router
 from dmo.api.health import health_router
 from dmo.api.metrics import metrics_router
 from dmo.api.router import router
@@ -27,6 +28,11 @@ async def lifespan(app: FastAPI):
         raise ValueError("DATABASE_URL environment variable is required")
     if not settings.api_key:
         raise ValueError("API_KEY environment variable is required")
+    if settings.admin_username == "admin" and settings.admin_password == "admin":
+        logger.warning(
+            "admin_default_credentials",
+            message="Admin UI using default credentials - change ADMIN_USERNAME/ADMIN_PASSWORD",
+        )
     from dmo.db import get_engine
 
     get_engine()
@@ -127,6 +133,7 @@ async def timeout_middleware(request: Request, call_next):
         )
 
 
+app.include_router(admin_router)
 app.include_router(router)
 app.include_router(health_router)
 app.include_router(metrics_router)

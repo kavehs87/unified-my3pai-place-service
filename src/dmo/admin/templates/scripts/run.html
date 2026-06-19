@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Run: {{ script.name }}</h2>
+  <p>{{ script.description }}</p>
+</div>
+
+<div class="card">
+  <form id="script-form" hx-post="/admin/scripts/{{ script.name }}/run" hx-target="#run-status" hx-indicator="#spinner">
+    {% for param in script.parameters %}
+    <div class="form-group">
+      <label for="p-{{ param.name }}">
+        {{ param.label }}
+        {% if param.required %}<span style="color:var(--red);">*</span>{% endif %}
+      </label>
+      {% if param.type == "select" %}
+      <select name="{{ param.name }}" id="p-{{ param.name }}" {% if param.required %}required{% endif %}>
+        {% if not param.required %}<option value="">--</option>{% endif %}
+        {% for opt in param.options %}
+        <option value="{{ opt }}" {% if param.default == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      {% elif param.type == "boolean" %}
+      <select name="{{ param.name }}" id="p-{{ param.name }}">
+        <option value="false" {% if param.default == false %}selected{% endif %}>No</option>
+        <option value="true" {% if param.default == true %}selected{% endif %}>Yes</option>
+      </select>
+      {% elif param.type == "int" %}
+      <input type="number" name="{{ param.name }}" id="p-{{ param.name }}" value="{{ param.default }}" {% if param.required %}required{% endif %}>
+      {% else %}
+      <input type="text" name="{{ param.name }}" id="p-{{ param.name }}" value="{{ param.default }}" {% if param.required %}required{% endif %} placeholder="{{ param.description }}">
+      {% endif %}
+      {% if param.description %}
+      <small style="color:var(--text-muted);font-size:0.75rem;">{{ param.description }}</small>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn btn-primary">Run Script</button>
+    <span id="spinner" class="spinner" style="display:none;margin-left:0.5rem;"></span>
+  </form>
+</div>
+
+<div id="run-status"></div>
+{% endblock %}

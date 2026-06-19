@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DMO Admin</title>
+<link rel="stylesheet" href="/admin/static/admin.css">
+<script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+<div class="sidebar">
+  <h1>DMO Admin</h1>
+  <div class="subtitle">Unified Place Service</div>
+  <nav>
+    <div class="nav-section">Browse</div>
+    <a href="/admin/" {% if active == 'dashboard' %}class="active"{% endif %}>Dashboard</a>
+    <a href="/admin/entities" {% if active == 'entities' %}class="active"{% endif %}>Entities</a>
+    <a href="/admin/classifications" {% if active == 'classifications' %}class="active"{% endif %}>Classifications</a>
+    <div class="nav-section">Tools</div>
+    <a href="/admin/scripts" {% if active == 'scripts' %}class="active"{% endif %}>Scripts</a>
+    <div class="nav-section">System</div>
+    <a href="/admin/settings" {% if active == 'settings' %}class="active"{% endif %}>Settings</a>
+  </nav>
+</div>
+<div class="content">
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

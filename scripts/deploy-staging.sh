@@ -98,6 +98,7 @@ EXCLUDES=(
   "loadtest/"
   "plans/"
   "docs/"
+  "backups/"
   ".env"
   ".env.staging"
   ".DS_Store"
@@ -120,7 +121,7 @@ done
 info "=== Step 1: Validate ==="
 
 # Check local tools
-for cmd in rsync ssh docker; do
+for cmd in rsync ssh; do
   command -v "$cmd" >/dev/null 2>&1 || die "$cmd is not installed locally"
 done
 

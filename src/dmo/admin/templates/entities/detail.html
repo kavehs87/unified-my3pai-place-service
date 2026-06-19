@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>{{ entity.name }}</h2>
+  <p>
+    <span class="badge badge-source">{{ entity.source }}</span>
+    <span class="badge badge-type">{{ entity.place_type }}</span>
+    ID: {{ entity.source_id }}
+  </p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Details</h3>
+  <div class="detail-grid">
+    <div>
+      <div class="detail-field-label">Name</div>
+      <div class="detail-field-value">{{ entity.name }}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Slug</div>
+      <div class="detail-field-value">{{ entity.slug or '-' }}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Country</div>
+      <div class="detail-field-value">{{ entity.country or '-' }}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Region</div>
+      <div class="detail-field-value">{{ entity.region or '-' }}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Locality</div>
+      <div class="detail-field-value">{{ entity.locality or '-' }}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Coordinates</div>
+      <div class="detail-field-value">{% if entity.latitude %}{{ entity.latitude }}, {{ entity.longitude }}{% else %}-{% endif %}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Rating</div>
+      <div class="detail-field-value">{{ entity.rating or '-' }}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Open Status</div>
+      <div class="detail-field-value">
+        {% if entity.is_open is none %}-{% elif entity.is_open %}<span class="badge badge-open">Open</span>{% else %}<span class="badge badge-closed">Closed</span>{% endif %}
+      </div>
+    </div>
+    <div>
+      <div class="detail-field-label">Website</div>
+      <div class="detail-field-value">{% if entity.website %}<a href="{{ entity.website }}" target="_blank">{{ entity.website }}</a>{% else %}-{% endif %}</div>
+    </div>
+    <div>
+      <div class="detail-field-label">Phone</div>
+      <div class="detail-field-value">{{ entity.phone or '-' }}</div>
+    </div>
+  </div>
+</div>
+
+{% if entity.summary %}
+<div class="card">
+  <h3 style="margin-bottom:0.5rem;font-size:0.9rem;">Summary</h3>
+  <p style="color:var(--text-muted);font-size:0.875rem;">{{ entity.summary }}</p>
+</div>
+{% endif %}
+
+{% if entity.description %}
+<div class="card">
+  <h3 style="margin-bottom:0.5rem;font-size:0.9rem;">Description</h3>
+  <pre>{{ entity.description }}</pre>
+</div>
+{% endif %}
+
+{% if entity.attributes and entity.attributes != {} %}
+<div class="card">
+  <h3 style="margin-bottom:0.5rem;font-size:0.9rem;">Attributes</h3>
+  <pre>{{ entity.attributes | tojson(indent=2) }}</pre>
+</div>
+{% endif %}
+
+{% if media %}
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Media ({{ media|length }})</h3>
+  <table>
+    <thead><tr><th>Type</th><th>URL</th><th>Name</th></tr></thead>
+    <tbody>
+    {% for m in media %}
+    <tr>
+      <td>{{ m.media_type }}</td>
+      <td><a href="{{ m.url }}" target="_blank" class="truncate" style="max-width:300px;display:inline-block;">{{ m.url }}</a></td>
+      <td>{{ m.name or '-' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if classifications %}
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Classifications ({{ classifications|length }})</h3>
+  <table>
+    <thead><tr><th>Category</th><th>Value Code</th><th>Value Title</th></tr></thead>
+    <tbody>
+    {% for c in classifications %}
+    <tr>
+      <td>{{ c.category }}</td>
+      <td>{{ c.value_code }}</td>
+      <td>{{ c.value_title or '-' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="flex gap-2">
+  <a href="/admin/entities" class="btn btn-outline">&larr; Back</a>
+</div>
+{% endblock %}

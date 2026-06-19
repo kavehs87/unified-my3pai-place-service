@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Entities</h2>
+  <p>Browse and search entities</p>
+</div>
+
+<div class="card">
+  <form hx-get="/admin/entities" hx-target="#entity-results" hx-trigger="submit" hx-push-url="true" class="mb-4">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="q">Search</label>
+        <input type="text" name="q" id="q" value="{{ q or '' }}" placeholder="Name or summary...">
+      </div>
+      <div class="form-group">
+        <label for="source">Source</label>
+        <select name="source" id="source">
+          <option value="">All sources</option>
+          {% for s in sources %}
+          <option value="{{ s }}" {% if source == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="place_type">Place Type</label>
+        <select name="place_type" id="place_type">
+          <option value="">All types</option>
+          {% for t in place_types %}
+          <option value="{{ t }}" {% if place_type == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <input type="text" name="country" id="country" value="{{ country or '' }}" placeholder="CH, DE, FR...">
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary">Search</button>
+      <a href="/admin/entities" class="btn btn-outline">Clear</a>
+    </div>
+  </form>
+</div>
+
+<div id="entity-results">
+{% include "entities/_list.html" %}
+</div>
+{% endblock %}

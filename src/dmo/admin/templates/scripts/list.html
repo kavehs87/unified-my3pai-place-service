@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Admin Scripts</h2>
+  <p>Run heal, fix, and enrich scripts against the data store</p>
+</div>
+
+<div class="card-grid">
+{% for script in scripts %}
+<div class="card" style="display:flex;flex-direction:column;gap:0.5rem;">
+  <div>
+    <strong style="font-size:0.9rem;">{{ script.name }}</strong>
+    <span class="badge badge-type" style="margin-left:0.5rem;">{{ script.category }}</span>
+  </div>
+  <p style="font-size:0.8rem;color:var(--text-muted);">{{ script.description }}</p>
+  <div style="margin-top:auto;">
+    <a href="/admin/scripts/{{ script.name }}" class="btn btn-primary btn-sm">Run</a>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <p style="color:var(--text-muted);text-align:center;padding:1rem;">No scripts found in admin_scripts/</p>
+</div>
+{% endfor %}
+</div>
+{% endblock %}

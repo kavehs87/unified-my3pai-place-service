@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Settings</h2>
+  <p>Configure LLM endpoint and other admin settings</p>
+</div>
+
+<div class="card">
+  <form hx-post="/admin/settings" hx-target="#settings-result" hx-indicator="#settings-spinner">
+    <div class="form-group">
+      <label for="llm_endpoint">LLM Endpoint URL</label>
+      <input type="url" name="llm_endpoint" id="llm_endpoint" value="{{ settings.llm_endpoint }}" placeholder="https://api.openai.com/v1">
+      <small style="color:var(--text-muted);font-size:0.75rem;">OpenAI-compatible chat completions endpoint</small>
+    </div>
+    <div class="form-group">
+      <label for="llm_api_key">API Key</label>
+      <input type="password" name="llm_api_key" id="llm_api_key" value="{{ settings.llm_api_key }}" placeholder="sk-...">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="llm_model">Model</label>
+        <input type="text" name="llm_model" id="llm_model" value="{{ settings.llm_model }}" placeholder="gpt-4o">
+      </div>
+      <div class="form-group">
+        <label for="llm_max_tokens">Max Tokens</label>
+        <input type="number" name="llm_max_tokens" id="llm_max_tokens" value="{{ settings.llm_max_tokens }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="llm_temperature">Temperature</label>
+      <input type="number" name="llm_temperature" id="llm_temperature" value="{{ settings.llm_temperature }}" step="0.1" min="0" max="2">
+    </div>
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary">Save Settings</button>
+      <span id="settings-spinner" class="spinner" style="display:none;"></span>
+    </div>
+  </form>
+</div>
+
+<div id="settings-result"></div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Test LLM Connection</h3>
+  <button hx-post="/admin/settings/test-llm" hx-target="#llm-test-result" hx-indicator="#test-spinner" class="btn btn-warning">Test Connection</button>
+  <span id="test-spinner" class="spinner" style="display:none;margin-left:0.5rem;"></span>
+  <div id="llm-test-result" class="mt-4"></div>
+</div>
+{% endblock %}

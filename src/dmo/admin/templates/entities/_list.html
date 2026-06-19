@@ -1,0 +1,33 @@
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Source</th>
+      <th>Type</th>
+      <th>Country</th>
+      <th>Rating</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for e in entities %}
+    <tr>
+      <td><a href="/admin/entities/{{ e.id }}" class="truncate" style="max-width:250px;display:inline-block;">{{ e.name }}</a></td>
+      <td><span class="badge badge-source">{{ e.source }}</span></td>
+      <td><span class="badge badge-type">{{ e.place_type }}</span></td>
+      <td>{{ e.country or '-' }}</td>
+      <td>{{ e.rating or '-' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">No entities found</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if total > page_size %}
+<div class="pagination">
+  {% if cursor %}
+  <a href="/admin/entities?q={{ q or '' }}&source={{ source or '' }}&place_type={{ place_type or '' }}&country={{ country or '' }}&page_size={{ page_size }}&cursor={{ cursor }}" class="btn btn-outline btn-sm" hx-get="/admin/entities?q={{ q or '' }}&source={{ source or '' }}&place_type={{ place_type or '' }}&country={{ country or '' }}&page_size={{ page_size }}&cursor={{ cursor }}" hx-target="#entity-results" hx-push-url="true">Next</a>
+  {% endif %}
+  <span style="color:var(--text-muted);font-size:0.8rem;">{{ total }} total</span>
+</div>
+{% endif %}

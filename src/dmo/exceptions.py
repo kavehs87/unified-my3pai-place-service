@@ -44,6 +44,7 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "code": exc.status_code,
                 "request_id": getattr(request.state, "request_id", ""),
             },
+            headers=exc.headers,
         )
 
     @app.exception_handler(AppError)
