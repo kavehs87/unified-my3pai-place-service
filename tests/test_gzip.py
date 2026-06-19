@@ -1,12 +1,12 @@
 """Gzip compression tests — standalone, no DB required.
 
-Tests verify GZipMiddleware behavior using raw ASGI calls.
-These run anywhere without PostGIS/Redis dependencies.
+Tests verify GZipMiddleware behavior using raw ASGI calls via asyncio.run()
+to avoid pytest-asyncio event loop interaction issues with GZipMiddleware.
 """
+import asyncio
 import gzip
 import json
 
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
@@ -15,11 +15,11 @@ def _build_app():
     """Build minimal FastAPI app with GZipMiddleware."""
     app = FastAPI()
     app.add_middleware(GZipMiddleware, minimum_size=500)
-    app.router.route("/small", methods=["GET"], endpoint=lambda: {"status": "ok"})
-    app.router.route(
+    app.add_api_route("/small", lambda: {"status": "ok"}, methods=["GET"])
+    app.add_api_route(
         "/large",
+        lambda: {"items": [{"name": f"Entity {i}", "desc": "x" * 200} for i in range(10)]},
         methods=["GET"],
-        endpoint=lambda: {"items": [{"name": f"Entity {i}", "desc": "x" * 200} for i in range(10)]},
     )
     return app
 
@@ -32,7 +32,7 @@ async def _asgi_request(app, path, headers=None):
         "method": "GET",
         "path": path,
         "query_string": b"",
-        "headers": [(k.encode(), v.encode()) for k, v in (headers or [])],
+        "headers": [(k.lower().encode(), v.encode()) for k, v in (headers or [])],
         "server": ("test", 80),
     }
 
@@ -51,30 +51,29 @@ async def _asgi_request(app, path, headers=None):
     return dict(state["headers"]), state["body"]
 
 
-@pytest.mark.asyncio
-async def test_gzip_vary_header_present():
+def _run_asgi(app, path, headers=None):
+    """Run ASGI request in a fresh event loop to avoid pytest-asyncio issues."""
+    return asyncio.run(_asgi_request(app, path, headers))
+
+
+def test_gzip_vary_header_present():
     """Vary: Accept-Encoding proves GZipMiddleware is active."""
-    app = _build_app()
-    headers, _ = await _asgi_request(app, "/large", [("Accept-Encoding", "gzip")])
+    headers, _ = _run_asgi(_build_app(), "/large", [("Accept-Encoding", "gzip")])
     vary = headers.get(b"vary", b"").decode()
     assert "Accept-Encoding" in vary
 
 
-@pytest.mark.asyncio
-async def test_gzip_small_response_not_compressed():
+def test_gzip_small_response_not_compressed():
     """Small responses (<500 bytes) skip compression."""
-    app = _build_app()
-    headers, body = await _asgi_request(app, "/small", [("Accept-Encoding", "gzip")])
+    headers, body = _run_asgi(_build_app(), "/small", [("Accept-Encoding", "gzip")])
     assert headers.get(b"content-encoding") is None
     data = json.loads(body)
     assert data["status"] == "ok"
 
 
-@pytest.mark.asyncio
-async def test_gzip_large_response_compressed():
+def test_gzip_large_response_compressed():
     """Large responses are gzip compressed and decompress to valid JSON."""
-    app = _build_app()
-    headers, body = await _asgi_request(app, "/large", [("Accept-Encoding", "gzip")])
+    headers, body = _run_asgi(_build_app(), "/large", [("Accept-Encoding", "gzip")])
     assert headers.get(b"content-encoding") == b"gzip"
     vary = headers.get(b"vary", b"").decode()
     assert "Accept-Encoding" in vary
@@ -84,31 +83,25 @@ async def test_gzip_large_response_compressed():
     assert data["items"][0]["name"] == "Entity 0"
 
 
-@pytest.mark.asyncio
-async def test_gzip_no_accept_encoding():
+def test_gzip_no_accept_encoding():
     """Without Accept-Encoding header, responses are uncompressed."""
-    app = _build_app()
-    headers, body = await _asgi_request(app, "/large")
+    headers, body = _run_asgi(_build_app(), "/large")
     assert headers.get(b"content-encoding") is None
     data = json.loads(body)
     assert len(data["items"]) == 10
 
 
-@pytest.mark.asyncio
-async def test_gzip_identity_encoding():
+def test_gzip_identity_encoding():
     """Accept-Encoding: identity forces no compression."""
-    app = _build_app()
-    headers, body = await _asgi_request(app, "/large", [("Accept-Encoding", "identity")])
+    headers, body = _run_asgi(_build_app(), "/large", [("Accept-Encoding", "identity")])
     assert headers.get(b"content-encoding") is None
     data = json.loads(body)
     assert len(data["items"]) == 10
 
 
-@pytest.mark.asyncio
-async def test_gzip_decompressed_data_integrity():
+def test_gzip_decompressed_data_integrity():
     """Decompressed data matches expected structure exactly."""
-    app = _build_app()
-    headers, body = await _asgi_request(app, "/large", [("Accept-Encoding", "gzip")])
+    headers, body = _run_asgi(_build_app(), "/large", [("Accept-Encoding", "gzip")])
     decompressed = gzip.decompress(body)
     data = json.loads(decompressed)
     assert "items" in data
