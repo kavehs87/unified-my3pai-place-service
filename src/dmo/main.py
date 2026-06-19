@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -6,6 +7,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from dmo.admin.router import router as admin_router
 from dmo.api.health import health_router
@@ -134,6 +136,10 @@ async def timeout_middleware(request: Request, call_next):
 
 
 app.include_router(admin_router)
+
+_static_dir = os.path.join(os.path.dirname(__file__), "admin", "static")
+app.mount("/admin/static", StaticFiles(directory=_static_dir), name="admin_static")
+
 app.include_router(router)
 app.include_router(health_router)
 app.include_router(metrics_router)
