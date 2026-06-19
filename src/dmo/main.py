@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from dmo.admin.router import router as admin_router
 from dmo.api.health import health_router
@@ -70,6 +71,7 @@ app = FastAPI(
 
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(RateLimiterMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 if settings.allowed_origins == "*":
     app.add_middleware(

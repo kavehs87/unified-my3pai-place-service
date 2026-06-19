@@ -94,7 +94,6 @@ EXCLUDES=(
   "*.pyc"
   ".pytest_cache/"
   ".ruff_cache/"
-  "tests/"
   "loadtest/"
   "plans/"
   "docs/"

@@ -16,6 +16,7 @@ ENV PYTHONPATH="/app/src"
 
 COPY pyproject.toml ./
 COPY src/ ./src/
+COPY tests/ ./tests/
 COPY alembic.ini ./
 COPY migrations/ ./migrations/
 COPY entrypoint.sh ./
