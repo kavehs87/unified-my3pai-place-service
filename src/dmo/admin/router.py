@@ -243,6 +243,17 @@ async def admin_entity_detail(
     classif_cols = [desc[0] for desc in classif_result.cursor.description]
     classifications = [dict(zip(classif_cols, r)) for r in classif_result.fetchall()]
 
+    # Get routes
+    route_result = await session.execute(
+        text("SELECT * FROM routes WHERE entity_id = :eid"),
+        {"eid": entity_id},
+    )
+    route_cols = [desc[0] for desc in route_result.cursor.description]
+    routes = [dict(zip(route_cols, r)) for r in route_result.fetchall()]
+    for r in routes:
+        if "entity_id" in r and r["entity_id"]:
+            r["entity_id"] = str(r["entity_id"])
+
     return templates.TemplateResponse(
         request,
         "entities/detail.html",
@@ -251,6 +262,7 @@ async def admin_entity_detail(
             "entity": entity,
             "media": media,
             "classifications": classifications,
+            "routes": routes,
         },
     )
 

@@ -5,116 +5,437 @@
   <p>
     <span class="badge badge-source">{{ entity.source }}</span>
     <span class="badge badge-type">{{ entity.place_type }}</span>
-    ID: {{ entity.source_id }}
+    <span class="badge badge-id">OSM {{ entity.source_id }}</span>
+    {% if entity.is_active %}<span class="badge badge-active">Active</span>{% else %}<span class="badge badge-inactive">Inactive</span>{% endif %}
   </p>
 </div>
 
-<div class="card">
-  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Details</h3>
-  <div class="detail-grid">
-    <div>
-      <div class="detail-field-label">Name</div>
-      <div class="detail-field-value">{{ entity.name }}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Slug</div>
-      <div class="detail-field-value">{{ entity.slug or '-' }}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Country</div>
-      <div class="detail-field-value">{{ entity.country or '-' }}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Region</div>
-      <div class="detail-field-value">{{ entity.region or '-' }}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Locality</div>
-      <div class="detail-field-value">{{ entity.locality or '-' }}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Coordinates</div>
-      <div class="detail-field-value">{% if entity.latitude %}{{ entity.latitude }}, {{ entity.longitude }}{% else %}-{% endif %}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Rating</div>
-      <div class="detail-field-value">{{ entity.rating or '-' }}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Open Status</div>
-      <div class="detail-field-value">
-        {% if entity.is_open is none %}-{% elif entity.is_open %}<span class="badge badge-open">Open</span>{% else %}<span class="badge badge-closed">Closed</span>{% endif %}
+<div class="detail-sections">
+
+  {% set has_media_preview = entity.thumbnail_url or entity.icon_url or entity.map_screenshot_url %}
+  {% if has_media_preview %}
+  <div class="card">
+    <h3 class="card-title">Media Previews</h3>
+    <div class="media-preview-grid">
+      {% if entity.thumbnail_url %}
+      <div class="media-preview-item">
+        <div class="media-preview-label">Thumbnail</div>
+        <a href="{{ entity.thumbnail_url }}" target="_blank">
+          <img src="{{ entity.thumbnail_url }}" alt="Thumbnail" class="media-preview-img" onerror="this.parentElement.style.display='none'"/>
+        </a>
       </div>
-    </div>
-    <div>
-      <div class="detail-field-label">Website</div>
-      <div class="detail-field-value">{% if entity.website %}<a href="{{ entity.website }}" target="_blank">{{ entity.website }}</a>{% else %}-{% endif %}</div>
-    </div>
-    <div>
-      <div class="detail-field-label">Phone</div>
-      <div class="detail-field-value">{{ entity.phone or '-' }}</div>
+      {% endif %}
+      {% if entity.map_screenshot_url %}
+      <div class="media-preview-item">
+        <div class="media-preview-label">Map Screenshot</div>
+        <a href="{{ entity.map_screenshot_url }}" target="_blank">
+          <img src="{{ entity.map_screenshot_url }}" alt="Map" class="media-preview-img" onerror="this.parentElement.style.display='none'"/>
+        </a>
+      </div>
+      {% endif %}
+      {% if entity.icon_url %}
+      <div class="media-preview-item">
+        <div class="media-preview-label">Icon</div>
+        <a href="{{ entity.icon_url }}" target="_blank">
+          <img src="{{ entity.icon_url }}" alt="Icon" class="media-preview-img media-preview-img-small" onerror="this.parentElement.style.display='none'"/>
+        </a>
+      </div>
+      {% endif %}
     </div>
   </div>
-</div>
+  {% endif %}
 
-{% if entity.summary %}
-<div class="card">
-  <h3 style="margin-bottom:0.5rem;font-size:0.9rem;">Summary</h3>
-  <p style="color:var(--text-muted);font-size:0.875rem;">{{ entity.summary }}</p>
-</div>
-{% endif %}
+  <div class="card">
+    <h3 class="card-title">Identity</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Name</div>
+        <div class="detail-field-value">{{ entity.name }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Slug</div>
+        <div class="detail-field-value">{{ entity.slug or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Entity ID (UUID)</div>
+        <div class="detail-field-value detail-value-mono">{{ entity.id }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Source</div>
+        <div class="detail-field-value">{{ entity.source }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Source ID</div>
+        <div class="detail-field-value">{{ entity.source_id }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Source URL</div>
+        <div class="detail-field-value">{% if entity.source_url %}<a href="{{ entity.source_url }}" target="_blank">{{ entity.source_url }}</a>{% else %}-{% endif %}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Imported At</div>
+        <div class="detail-field-value">{{ entity.imported_at or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Updated At</div>
+        <div class="detail-field-value">{{ entity.updated_at or '-' }}</div>
+      </div>
+    </div>
+  </div>
 
-{% if entity.description %}
-<div class="card">
-  <h3 style="margin-bottom:0.5rem;font-size:0.9rem;">Description</h3>
-  <pre>{{ entity.description }}</pre>
-</div>
-{% endif %}
+  <div class="card">
+    <h3 class="card-title">Classification</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Place Type</div>
+        <div class="detail-field-value"><span class="badge badge-type">{{ entity.place_type }}</span></div>
+      </div>
+      <div>
+        <div class="detail-field-label">Category Class</div>
+        <div class="detail-field-value">{{ entity.category_class or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Secondary Types</div>
+        <div class="detail-field-value">
+          {% if entity.secondary_types %}{% for t in entity.secondary_types %}<span class="badge badge-type">{{ t }}</span> {% endfor %}{% else %}-{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="detail-field-label">Description Format</div>
+        <div class="detail-field-value">{{ entity.description_format or '-' }}</div>
+      </div>
+    </div>
+  </div>
 
-{% if entity.attributes and entity.attributes != {} %}
-<div class="card">
-  <h3 style="margin-bottom:0.5rem;font-size:0.9rem;">Attributes</h3>
-  <pre>{{ entity.attributes | tojson(indent=2) }}</pre>
+  {% if entity.collection_id or entity.collection_name or entity.collection_slug %}
+  <div class="card">
+    <h3 class="card-title">Collection</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Collection ID</div>
+        <div class="detail-field-value">{{ entity.collection_id or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Collection Name</div>
+        <div class="detail-field-value">{{ entity.collection_name or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Collection Slug</div>
+        <div class="detail-field-value">{{ entity.collection_slug or '-' }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h3 class="card-title">Location</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Country</div>
+        <div class="detail-field-value">{{ entity.country or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Region</div>
+        <div class="detail-field-value">{{ entity.region or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Locality</div>
+        <div class="detail-field-value">{{ entity.locality or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Region Names</div>
+        <div class="detail-field-value">
+          {% if entity.region_names %}{% for r in entity.region_names %}<span class="badge badge-region">{{ r }}</span> {% endfor %}{% else %}-{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="detail-field-label">Coordinates</div>
+        <div class="detail-field-value">
+          {% if entity.latitude %}{{ entity.latitude }}, {{ entity.longitude }}
+          <a href="https://www.openstreetmap.org/?mlat={{ entity.latitude }}&mlon={{ entity.longitude }}#map=16/{{ entity.latitude }}/{{ entity.longitude }}" target="_blank" class="detail-link" title="View on OSM">[OSM]</a>
+          {% else %}-{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="detail-field-label">Address</div>
+        <div class="detail-field-value">{{ entity.address or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Postal Code</div>
+        <div class="detail-field-value">{{ entity.postal_code or '-' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Contact & Booking</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Website</div>
+        <div class="detail-field-value">{% if entity.website %}<a href="{{ entity.website }}" target="_blank">{{ entity.website }}</a>{% else %}-{% endif %}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Phone</div>
+        <div class="detail-field-value">{{ entity.phone or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Email</div>
+        <div class="detail-field-value">{% if entity.email %}<a href="mailto:{{ entity.email }}">{{ entity.email }}</a>{% else %}-{% endif %}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Booking Link</div>
+        <div class="detail-field-value">{% if entity.booking_link %}<a href="{{ entity.booking_link }}" target="_blank">{{ entity.booking_link }}</a>{% else %}-{% endif %}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Menu URL</div>
+        <div class="detail-field-value">{% if entity.menu_url %}<a href="{{ entity.menu_url }}" target="_blank">{{ entity.menu_url }}</a>{% else %}-{% endif %}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Order URL</div>
+        <div class="detail-field-value">{% if entity.order_url %}<a href="{{ entity.order_url }}" target="_blank">{{ entity.order_url }}</a>{% else %}-{% endif %}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Reservations URL</div>
+        <div class="detail-field-value">{% if entity.reservations_url %}<a href="{{ entity.reservations_url }}" target="_blank">{{ entity.reservations_url }}</a>{% else %}-{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Pricing</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Currency</div>
+        <div class="detail-field-value">{{ entity.currency or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Price Min</div>
+        <div class="detail-field-value">{{ entity.price_min or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Price Max</div>
+        <div class="detail-field-value">{{ entity.price_max or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Price Level</div>
+        <div class="detail-field-value">
+          {% if entity.price_level is not none %}
+            {% if entity.price_level == 0 %}<span class="badge badge-open">Free</span>
+            {% elif entity.price_level == 1 %}<span class="badge badge-price">$</span>
+            {% elif entity.price_level == 2 %}<span class="badge badge-price">$$</span>
+            {% elif entity.price_level == 3 %}<span class="badge badge-price">$$$</span>
+            {% elif entity.price_level == 4 %}<span class="badge badge-price">$$$$</span>
+            {% endif %}
+          {% else %}-{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="detail-field-label">Is Free</div>
+        <div class="detail-field-value">{{ 'Yes' if entity.is_free else 'No' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Availability & Access</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Open Status</div>
+        <div class="detail-field-value">
+          {% if entity.is_open is none %}-{% elif entity.is_open %}<span class="badge badge-open">Open</span>{% else %}<span class="badge badge-closed">Closed</span>{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="detail-field-label">Opens At</div>
+        <div class="detail-field-value">{{ entity.opens_at or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Closes At</div>
+        <div class="detail-field-value">{{ entity.closes_at or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Business Status</div>
+        <div class="detail-field-value">
+          {% if entity.business_status %}
+            {% if entity.business_status == 'OPERATIONAL' %}<span class="badge badge-open">{{ entity.business_status }}</span>
+            {% elif entity.business_status == 'CLOSED_TEMPORARILY' %}<span class="badge badge-warning">{{ entity.business_status }}</span>
+            {% elif entity.business_status == 'CLOSED' %}<span class="badge badge-closed">{{ entity.business_status }}</span>
+            {% else %}{{ entity.business_status }}{% endif %}
+          {% else %}-{% endif %}
+        </div>
+      </div>
+      <div>
+        <div class="detail-field-label">Access Type</div>
+        <div class="detail-field-value">{{ entity.access_type or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Recommended Season</div>
+        <div class="detail-field-value">{{ entity.recommended_season or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Is Reusable</div>
+        <div class="detail-field-value">{{ 'Yes' if entity.is_reusable else 'No' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Opening Hours</div>
+        <div class="detail-field-value detail-value-wrap">{% if entity.opening_hours %}{{ entity.opening_hours }}{% else %}-{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Accessibility</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Barrier Free</div>
+        <div class="detail-field-value">{{ 'Yes' if entity.is_barrier_free else 'No' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Wheelchair Accessible</div>
+        <div class="detail-field-value">
+          {% if entity.wheelchair_accessible is not none %}{{ 'Yes' if entity.wheelchair_accessible else 'No' }}{% else %}-{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="card-title">Popularity & Ratings</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">Rating</div>
+        <div class="detail-field-value">{{ entity.rating or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Reviews Count</div>
+        <div class="detail-field-value">{{ entity.reviews_count or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Favorite Count</div>
+        <div class="detail-field-value">{{ entity.favorite_count or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Is Featured</div>
+        <div class="detail-field-value">{{ 'Yes' if entity.is_featured else 'No' }}</div>
+      </div>
+    </div>
+  </div>
+
+  {% if entity.license %}
+  <div class="card">
+    <h3 class="card-title">License</h3>
+    <div class="detail-grid">
+      <div>
+        <div class="detail-field-label">License</div>
+        <div class="detail-field-value">{{ entity.license }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if entity.summary %}
+  <div class="card">
+    <h3 class="card-title">Summary</h3>
+    <p class="detail-text">{{ entity.summary }}</p>
+  </div>
+  {% endif %}
+
+  {% if entity.description %}
+  <div class="card">
+    <h3 class="card-title">Description <span class="card-subtitle">(format: {{ entity.description_format or 'text' }})</span></h3>
+    <pre>{{ entity.description }}</pre>
+  </div>
+  {% endif %}
+
+  {% if entity.attributes and entity.attributes != {} %}
+  <div class="card">
+    <h3 class="card-title">Attributes (JSONB)</h3>
+    <pre>{{ entity.attributes | tojson(indent=2) }}</pre>
+  </div>
+  {% endif %}
+
 </div>
-{% endif %}
 
 {% if media %}
 <div class="card">
-  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Media ({{ media|length }})</h3>
+  <h3 class="card-title">Media ({{ media|length }})</h3>
   <table>
-    <thead><tr><th>Type</th><th>URL</th><th>Name</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>URL</th>
+        <th>Name</th>
+        <th>Dimensions</th>
+        <th>Format</th>
+        <th>Order</th>
+        <th>Copyright</th>
+        <th>Keywords</th>
+      </tr>
+    </thead>
     <tbody>
     {% for m in media %}
-    <tr>
-      <td>{{ m.media_type }}</td>
-      <td><a href="{{ m.url }}" target="_blank" class="truncate" style="max-width:300px;display:inline-block;">{{ m.url }}</a></td>
-      <td>{{ m.name or '-' }}</td>
-    </tr>
+      <tr>
+        <td><span class="badge badge-type">{{ m.media_type }}</span></td>
+        <td><a href="{{ m.url }}" target="_blank" class="truncate" style="max-width:250px;display:inline-block;">{{ m.url }}</a></td>
+        <td>{{ m.name or '-' }}</td>
+        <td>{% if m.width and m.height %}{{ m.width }}&times;{{ m.height }}{% else %}-{% endif %}</td>
+        <td>{{ m.encoding_format or '-' }}</td>
+        <td>{{ m.sort_order }}</td>
+        <td>{{ m.copyright_holder or '-' }}</td>
+        <td class="detail-value-wrap">{{ m.keywords or '-' }}</td>
+      </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+{% else %}
+<div class="card"><p class="detail-empty">No media items for this entity.</p></div>
 {% endif %}
 
 {% if classifications %}
 <div class="card">
-  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Classifications ({{ classifications|length }})</h3>
+  <h3 class="card-title">Classifications ({{ classifications|length }})</h3>
   <table>
-    <thead><tr><th>Category</th><th>Value Code</th><th>Value Title</th></tr></thead>
+    <thead><tr><th>ID</th><th>Category</th><th>Value Code</th><th>Value Title</th></tr></thead>
     <tbody>
     {% for c in classifications %}
-    <tr>
-      <td>{{ c.category }}</td>
-      <td>{{ c.value_code }}</td>
-      <td>{{ c.value_title or '-' }}</td>
-    </tr>
+      <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.category }}</td>
+        <td>{{ c.value_code }}</td>
+        <td>{{ c.value_title or '-' }}</td>
+      </tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+{% else %}
+<div class="card"><p class="detail-empty">No classifications for this entity.</p></div>
+{% endif %}
+
+{% if routes %}
+<div class="card">
+  <h3 class="card-title">Routes ({{ routes|length }})</h3>
+  <table>
+    <thead><tr><th>ID</th><th>Has Geometry</th><th>Elevation Points</th><th>Fetched At</th></tr></thead>
+    <tbody>
+    {% for rt in routes %}
+      <tr>
+        <td>{{ rt.id }}</td>
+        <td>{{ 'Yes' if rt.geometry else 'No' }}</td>
+        <td>{{ rt.elevation_profile|length if rt.elevation_profile else 0 }}</td>
+        <td>{{ rt.fetched_at or '-' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card"><p class="detail-empty">No routes for this entity.</p></div>
 {% endif %}
 
 <div class="flex gap-2">
   <a href="/admin/entities" class="btn btn-outline">&larr; Back</a>
+  {% if entity.source_url %}<a href="{{ entity.source_url }}" target="_blank" class="btn btn-outline">Open Source URL</a>{% endif %}
 </div>
 {% endblock %}
