@@ -239,10 +239,13 @@ See `plans/unified-dmo-schema.md` for complete schema, field mappings, design de
 - Cache disabled in tests via autouse fixture
 - Session cleanup runs at start AND end of each test
 - Package-locally-scoped imports within test functions (avoid top-level imports that trigger app init)
-- Run: `uv run pytest tests/`
+- **Test VM**: `root@10.0.0.93` (old staging VM) — use for all test runs to avoid cleaning production data on new VM
+- **Test DB URL**: `postgresql+asyncpg://postgres:changeme@10.0.0.93:5432/dmo`
+- **Test Redis URL**: `redis://10.0.0.93:6379`
+- Run: `TEST_DB_URL=postgresql+asyncpg://postgres:changeme@10.0.0.93:5432/dmo TEST_REDIS_URL=redis://10.0.0.93:6379 uv run pytest tests/`
 - Lint: `uv run ruff check src/ tests/`
 - Format: `uv run ruff format src/ tests/`
-- **Must pass before commit:** all tests + ruff check (231 tests, 0 lint errors)
+- **Must pass before commit:** all tests + ruff check (244 tests, 0 lint errors)
 
 ### Test Structure (22 test files)
 

@@ -45,7 +45,9 @@ class Entity(SQLModel, table=True):
     description_format: str | None = Field(default=None, sa_column=Column(String(50)))
 
     place_type: str = Field(sa_column=Column(String(100), nullable=False))
-    category_class: str | None = Field(default=None, sa_column=Column(String(50)))
+    unified_category_id: int | None = Field(default=None, sa_column=Column(Integer))
+    unified_category: str | None = Field(default=None, sa_column=Column(String(100)))
+    unified_subcategory: str | None = Field(default=None, sa_column=Column(String(100)))
     secondary_types: list[str] | None = Field(default=None, sa_column=Column(ARRAY(Text)))
 
     collection_id: str | None = Field(default=None, sa_column=Column(String(255)))
@@ -111,6 +113,8 @@ class Entity(SQLModel, table=True):
         default_factory=dict, sa_column=Column(JSONB, server_default=text("'{}'"))
     )
 
+    quality_score: int | None = Field(default=None, sa_column=Column(Integer))
+    enriched_at: datetime | None = Field(default=None, sa_column=Column(TIMESTAMP(timezone=True)))
     is_active: bool = Field(default=True, sa_column=Column(Boolean, server_default=text("TRUE")))
     imported_at: datetime | None = Field(
         default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
@@ -222,4 +226,56 @@ class Route(SQLModel, table=True):
     )
     fetched_at: datetime | None = Field(
         default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
+
+
+class UnifiedCategory(SQLModel, table=True):
+    __tablename__ = "unified_categories"
+
+    id: int | None = Field(
+        default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True)
+    )
+    slug: str = Field(sa_column=Column(String(100), nullable=False, unique=True))
+    name: str = Field(sa_column=Column(String(200), nullable=False))
+    parent_id: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("unified_categories.id", ondelete="SET NULL")),
+    )
+    icon: str | None = Field(default=None, sa_column=Column(String(50)))
+    sort_order: int = Field(default=0, sa_column=Column(Integer, server_default=text("0")))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, server_default=text("TRUE")))
+    created_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
+    updated_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
+
+
+class PlaceTypeMapping(SQLModel, table=True):
+    __tablename__ = "place_type_mappings"
+
+    id: int | None = Field(
+        default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True)
+    )
+    source: str = Field(sa_column=Column(String(100), nullable=False))
+    source_place_type: str = Field(sa_column=Column(String(100), nullable=False))
+    unified_category_id: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("unified_categories.id", ondelete="SET NULL")),
+    )
+    confidence: int = Field(default=100, sa_column=Column(Integer, server_default=text("100")))
+    is_manual: bool = Field(default=False, sa_column=Column(Boolean, server_default=text("FALSE")))
+    notes: str | None = Field(default=None, sa_column=Column(Text))
+    created_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
+    updated_at: datetime | None = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_place_type", name="uq_source_place_type"),
+        Index("idx_ptm_category", "unified_category_id"),
+        Index("idx_ptm_source", "source"),
     )

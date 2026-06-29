@@ -80,6 +80,7 @@ class TestOpenStatusCacheSeparation:
 
 class TestOpenStatusCacheLogic:
     def test_fetch_open_status_returns_null_for_none(self):
+        import asyncio
 
         async def mock_fetch():
             status = None
@@ -87,9 +88,7 @@ class TestOpenStatusCacheLogic:
                 return "null"
             return json.dumps(status.model_dump(mode="json"))
 
-        import asyncio
-
-        result = asyncio.get_event_loop().run_until_complete(mock_fetch())
+        result = asyncio.run(mock_fetch())
         assert result == "null"
 
     def test_open_status_null_sentinel_not_deserialized(self):

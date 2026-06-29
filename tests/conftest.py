@@ -24,6 +24,7 @@ from dmo.main import app
 from dmo.services.cache import cache_get as _orig_cache_get
 from dmo.services.cache import cache_get_or_set as _orig_cache_get_or_set
 from dmo.services.cache import cache_set as _orig_cache_set
+from dmo.services.cache import cache_delete_pattern as _orig_cache_delete_pattern
 
 TEST_DB_URL = os.environ.get(
     "TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
@@ -35,6 +36,7 @@ def _disable_cache(request):
     """Disable caching during tests."""
     import dmo.api.router as router_module
     import dmo.services.cache as cache_module
+    import dmo.services.write as write_module
 
     async def _no_op_get(*args, **kwargs):
         return None
@@ -47,13 +49,24 @@ def _disable_cache(request):
             return await fetch_fn(), "MISS"
         return None, "MISS"
 
+    async def _no_op_delete_pattern(*args, **kwargs):
+        pass
+
     # Don't patch cache_get_or_set for stampede tests
     is_stampede = "test_cache_stampede" in (
         request.node.module.__name__ if request.node.module else ""
     )
 
+    # Don't patch cache_delete_pattern for cache tests
+    is_cache_test = "test_cache" in (
+        request.node.module.__name__ if request.node.module else ""
+    )
+
     cache_module.cache_get = _no_op_get
     cache_module.cache_set = _no_op_set
+    if not is_cache_test:
+        cache_module.cache_delete_pattern = _no_op_delete_pattern
+        write_module.cache_delete_pattern = _no_op_delete_pattern
     if not is_stampede:
         cache_module.cache_get_or_set = _no_op_get_or_set
     router_module.cache_get = _no_op_get
@@ -67,6 +80,9 @@ def _disable_cache(request):
     cache_module.cache_get = _orig_cache_get
     cache_module.cache_set = _orig_cache_set
     cache_module.cache_get_or_set = _orig_cache_get_or_set
+    if not is_cache_test:
+        cache_module.cache_delete_pattern = _orig_cache_delete_pattern
+        write_module.cache_delete_pattern = _orig_cache_delete_pattern
     router_module.cache_get = _orig_cache_get
     router_module.cache_set = _orig_cache_set
     router_module.cache_get_or_set = _orig_cache_get_or_set

@@ -91,8 +91,12 @@
         <div class="detail-field-value"><span class="badge badge-type">{{ entity.place_type }}</span></div>
       </div>
       <div>
-        <div class="detail-field-label">Category Class</div>
-        <div class="detail-field-value">{{ entity.category_class or '-' }}</div>
+        <div class="detail-field-label">Unified Category</div>
+        <div class="detail-field-value">{{ entity.unified_category or '-' }}</div>
+      </div>
+      <div>
+        <div class="detail-field-label">Unified Subcategory</div>
+        <div class="detail-field-value">{{ entity.unified_subcategory or '-' }}</div>
       </div>
       <div>
         <div class="detail-field-label">Secondary Types</div>

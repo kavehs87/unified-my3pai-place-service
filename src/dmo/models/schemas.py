@@ -102,7 +102,8 @@ class EntityDetail(BaseModel):
     description: str | None = None
     description_format: str | None = None
     place_type: str
-    category_class: str | None = None
+    unified_category: str | None = None
+    unified_subcategory: str | None = None
     secondary_types: list[str] | None = None
     collection_id: str | None = None
     collection_name: str | None = None
@@ -164,7 +165,6 @@ class EntityCreate(BaseModel):
     description: str | None = Field(None, max_length=50000)
     description_format: str | None = Field(None, max_length=50)
     place_type: str = Field(..., min_length=1, max_length=100)
-    category_class: str | None = Field(None, max_length=100)
     secondary_types: list[str] | None = Field(default=None, max_length=100)
     collection_id: str | None = Field(None, max_length=255)
     collection_name: str | None = Field(None, max_length=255)
@@ -236,7 +236,6 @@ class EntityUpdate(BaseModel):
     description: str | None = Field(None, max_length=50000)
     description_format: str | None = Field(None, max_length=50)
     place_type: str | None = Field(None, min_length=1, max_length=100)
-    category_class: str | None = Field(None, max_length=100)
     secondary_types: list[str] | None = Field(default=None, max_length=100)
     collection_id: str | None = Field(None, max_length=255)
     collection_name: str | None = Field(None, max_length=255)
