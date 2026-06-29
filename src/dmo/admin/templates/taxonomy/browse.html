@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Taxonomy</h2>
+  <p>Manage unified categories hierarchy</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Add Category</h3>
+  <form hx-post="/admin/taxonomy" hx-target="#taxonomy-toast" hx-indicator="#taxonomy-spinner">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="name">Name</label>
+        <input type="text" name="name" id="name" placeholder="e.g. Food & Drink" required>
+      </div>
+      <div class="form-group">
+        <label for="slug">Slug</label>
+        <input type="text" name="slug" id="slug" placeholder="e.g. food_drink" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="parent">Parent (optional)</label>
+        <select name="parent_id" id="parent">
+          <option value="">— Top level —</option>
+          {% for p in parents %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="icon">Icon</label>
+        <input type="text" name="icon" id="icon" placeholder="e.g. 🍽️">
+      </div>
+    </div>
+    <div class="form-group" style="max-width:120px;">
+      <label for="sort_order">Sort Order</label>
+      <input type="number" name="sort_order" id="sort_order" value="0">
+    </div>
+    <div class="flex gap-2" style="margin-top:0.5rem;">
+      <button type="submit" class="btn btn-primary">Add</button>
+      <span id="taxonomy-spinner" class="spinner" style="display:none;"></span>
+    </div>
+  </form>
+  <div id="taxonomy-toast"></div>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Slug</th>
+        <th>Icon</th>
+        <th>Subcats</th>
+        <th>Entities</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in categories %}
+    <tr id="cat-row-{{ c.id }}">
+      <td>
+        <span class="cat-name">{{ '  ' if c.parent_id else '' }}{{ c.icon or '' }} {{ c.name }}</span>
+      </td>
+      <td><code style="font-size:0.75rem;color:var(--text-muted);">{{ c.slug }}</code></td>
+      <td style="font-size:0.75rem;color:var(--text-muted);">{{ c.icon or '—' }}</td>
+      <td style="font-size:0.75rem;color:var(--text-muted);">{{ c.children_count }}</td>
+      <td style="font-size:0.75rem;color:var(--text-muted);">{{ c.entity_count }}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="editCategory({{ c.id }}, '{{ c.name }}', '{{ c.icon or '' }}', {{ c.parent_id|default('null') }}, {{ c.sort_order }})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCategory({{ c.id }}, '{{ c.name }}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="edit-form" style="display:none;" class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Edit Category</h3>
+  <form id="edit-cat-form">
+    <input type="hidden" name="sort_order" id="edit-sort_order">
+    <input type="hidden" name="parent_id" id="edit-parent_id">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" name="name" id="edit-name" required>
+      </div>
+      <div class="form-group">
+        <label>Slug (immutable)</label>
+        <input type="text" id="edit-slug" disabled style="opacity:0.5;">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Parent</label>
+        <select name="parent_id_real" id="edit-parent_select">
+          <option value="">— Top level —</option>
+          {% for p in parents %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Icon</label>
+        <input type="text" name="icon" id="edit-icon">
+      </div>
+    </div>
+    <div class="flex gap-2" style="margin-top:0.5rem;">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <button type="button" class="btn btn-outline" onclick="document.getElementById('edit-form').style.display='none'">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<script>
+function editCategory(id, name, icon, parentId, sortOrder) {
+  document.getElementById('edit-form').style.display = 'block';
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-icon').value = icon;
+  document.getElementById('edit-slug').value = '';
+  document.getElementById('edit-sort_order').value = sortOrder;
+  document.getElementById('edit-parent_select').value = parentId || '';
+
+  var form = document.getElementById('edit-cat-form');
+  form.onsubmit = function(e) {
+    e.preventDefault();
+    var fd = new FormData();
+    fd.append('name', document.getElementById('edit-name').value);
+    fd.append('icon', document.getElementById('edit-icon').value);
+    fd.append('parent_id', document.getElementById('edit-parent_select').value);
+    fd.append('sort_order', document.getElementById('edit-sort_order').value);
+
+    fetch('/admin/taxonomy/' + id, {
+      method: 'PUT',
+      body: fd
+    }).then(r => r.text()).then(html => {
+      document.getElementById('edit-form').style.display = 'none';
+      var toast = document.createElement('div');
+      toast.className = 'toast ' + (html.includes('success') ? 'success' : 'error');
+      toast.innerHTML = html;
+      document.body.appendChild(toast);
+      setTimeout(() => location.reload(), 1000);
+    });
+  };
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function deleteCategory(id, name) {
+  if (!confirm('Deactivate category "' + name + '"?')) return;
+  fetch('/admin/taxonomy/' + id, {method: 'DELETE'})
+    .then(r => r.text())
+    .then(html => {
+      var toast = document.createElement('div');
+      toast.className = 'toast success';
+      toast.innerHTML = html;
+      document.body.appendChild(toast);
+      setTimeout(() => location.reload(), 1000);
+    });
+}
+</script>
+{% endblock %}

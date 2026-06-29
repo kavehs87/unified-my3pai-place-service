@@ -1,0 +1,93 @@
+<table>
+  <thead>
+    <tr>
+      <th>Source</th>
+      <th>Place Type</th>
+      <th>→ Unified Category</th>
+      <th>Confidence</th>
+      <th>Manual</th>
+      <th>Notes</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for m in mappings %}
+  <tr>
+    <td><span class="badge badge-source">{{ m.source }}</span></td>
+    <td><span class="badge badge-type">{{ m.source_place_type }}</span></td>
+    <td>
+      {% if m.unified_slug %}
+        <span class="badge badge-active">{{ m.unified_name }} <small>({{ m.unified_slug }})</small></span>
+      {% else %}
+        <span style="color:var(--text-muted);font-style:italic;">— unmapped —</span>
+      {% endif %}
+    </td>
+    <td>
+      <span class="badge {% if m.confidence >= 100 %}badge-active{% elif m.confidence >= 80 %}badge-price{% else %}badge-warning{% endif %}">{{ m.confidence }}</span>
+    </td>
+    <td>{% if m.is_manual %}<span class="badge badge-active">Yes</span>{% else %}—{% endif %}</td>
+    <td style="font-size:0.75rem;color:var(--text-muted);max-width:150px;" class="truncate">{{ m.notes or '—' }}</td>
+    <td>
+      <div class="flex gap-2">
+        <button class="btn btn-outline btn-sm" onclick="editMapping({{ m.id }}, {{ m.unified_category_id|default('null') }}, {{ m.confidence }}, {{ 'true' if m.is_manual else 'false' }}, '{{ (m.notes or '')|replace("'", "\\'") }}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteMapping({{ m.id }}, '{{ m.source }}/{{ m.source_place_type }}')">Delete</button>
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+  {% if not mappings %}
+  <tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:2rem;">No mappings found</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+
+<div class="pagination">
+  <span style="font-size:0.75rem;color:var(--text-muted);">{{ total }} total</span>
+  {% if cursor %}
+  <a href="/admin/mappings?source={{ source }}&min_confidence={{ min_confidence }}&cursor={{ cursor }}"
+     hx-get="/admin/mappings?source={{ source }}&min_confidence={{ min_confidence }}&cursor={{ cursor }}"
+     hx-target="#mapping-results" hx-push-url="true"
+     class="btn btn-outline btn-sm">Next</a>
+  {% endif %}
+</div>
+
+<script>
+function editMapping(id, catId, confidence, isManual, notes) {
+  var newCat = prompt('Unified category ID (leave empty to unset):', catId || '');
+  if (newCat === null) return;
+  var newConf = prompt('Confidence (0-100):', confidence);
+  if (newConf === null) return;
+  var newManual = confirm('Is this a manual override? (OK=Yes, Cancel=No)');
+  var newNotes = prompt('Notes:', notes);
+  if (newNotes === null) newNotes = notes;
+
+  var fd = new FormData();
+  fd.append('unified_category_id', newCat);
+  fd.append('confidence', newConf);
+  fd.append('is_manual', newManual ? 'true' : 'false');
+  fd.append('notes', newNotes);
+
+  fetch('/admin/mappings/' + id, {method: 'PUT', body: fd})
+    .then(r => r.text())
+    .then(html => {
+      var toast = document.createElement('div');
+      toast.className = 'toast success';
+      toast.innerHTML = html;
+      document.body.appendChild(toast);
+      setTimeout(() => location.reload(), 1000);
+    });
+}
+
+function deleteMapping(id, label) {
+  if (!confirm('Delete mapping "' + label + '"?')) return;
+  fetch('/admin/mappings/' + id, {method: 'DELETE'})
+    .then(r => r.text())
+    .then(html => {
+      var toast = document.createElement('div');
+      toast.className = 'toast success';
+      toast.innerHTML = html;
+      document.body.appendChild(toast);
+      setTimeout(() => location.reload(), 1000);
+    });
+}
+</script>

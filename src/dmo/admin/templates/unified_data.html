@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Unified Data</h2>
+  <p>Taxonomy coverage and data quality overview</p>
+</div>
+
+<div class="card-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.total_categories }}</div>
+    <div class="stat-label">Categories</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.total_mappings }}</div>
+    <div class="stat-label">Source Mappings</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.unified_entities }}</div>
+    <div class="stat-label">Entities Unified</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ stats.pct_unified }}%</div>
+    <div class="stat-label">Coverage</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color: {% if stats.low_confidence_mappings > 0 %}var(--yellow){% else %}var(--green){% endif %}">{{ stats.low_confidence_mappings }}</div>
+    <div class="stat-label">Low-Confidence Mappings</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Entities by Unified Category</h3>
+  <table>
+    <thead><tr><th>Category</th><th>Entities</th></tr></thead>
+    <tbody>
+    {% for c in stats.entities_by_category %}
+    <tr>
+      <td><span class="badge badge-type">{{ c.category }}</span></td>
+      <td>{{ c.count }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if stats.unmapped_types %}
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Unmapped Place Types</h3>
+  <table>
+    <thead><tr><th>Source</th><th>Place Type</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for u in stats.unmapped_types %}
+    <tr>
+      <td><span class="badge badge-source">{{ u.source }}</span></td>
+      <td><span class="badge badge-type">{{ u.place_type }}</span></td>
+      <td>{{ u.count }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Source Mappings</h2>
+  <p>Map source place types to unified categories</p>
+</div>
+
+<div class="card">
+  <form hx-get="/admin/mappings" hx-target="#mapping-results" hx-trigger="submit" hx-push-url="true" class="mb-4">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="source">Source</label>
+        <select name="source" id="source">
+          <option value="">All sources</option>
+          {% for s in sources %}
+          <option value="{{ s }}" {% if source == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="min_confidence">Min Confidence</label>
+        <select name="min_confidence" id="min_confidence">
+          <option value="0" {% if min_confidence == 0 %}selected{% endif %}>All</option>
+          <option value="50" {% if min_confidence == 50 %}selected{% endif %}>50+</option>
+          <option value="80" {% if min_confidence == 80 %}selected{% endif %}>80+</option>
+          <option value="100" {% if min_confidence == 100 %}selected{% endif %}>100 only</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="/admin/mappings" class="btn btn-outline">Clear</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.75rem;font-size:0.9rem;">Add Mapping</h3>
+  <form hx-post="/admin/mappings" hx-target="#mapping-toast" hx-indicator="#mapping-spinner">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="source_new">Source</label>
+        <input type="text" name="source" id="source_new" placeholder="e.g. osm" required>
+      </div>
+      <div class="form-group">
+        <label for="place_type_new">Place Type</label>
+        <input type="text" name="source_place_type" id="place_type_new" placeholder="e.g. restaurant" required>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="cat_new">Unified Category (leaf)</label>
+        <select name="unified_category_id" id="cat_new">
+          <option value="">— None —</option>
+          {% for c in all_categories %}
+          <option value="{{ c.id }}">{{ c.name }} ({{ c.slug }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="conf_new">Confidence</label>
+        <input type="number" name="confidence" id="conf_new" value="100" min="0" max="100">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="manual_new">Manual Override</label>
+        <select name="is_manual" id="manual_new">
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="notes_new">Notes</label>
+        <input type="text" name="notes" id="notes_new" placeholder="Optional...">
+      </div>
+    </div>
+    <div class="flex gap-2" style="margin-top:0.5rem;">
+      <button type="submit" class="btn btn-primary">Add</button>
+      <span id="mapping-spinner" class="spinner" style="display:none;"></span>
+    </div>
+  </form>
+  <div id="mapping-toast"></div>
+</div>
+
+<div id="mapping-results">
+{% include "mappings/_list.html" %}
+</div>
+{% endblock %}

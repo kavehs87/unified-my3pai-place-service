@@ -85,6 +85,64 @@ async def get_dashboard_stats(session: AsyncSession) -> dict:
     }
 
 
+async def get_unified_stats(session: AsyncSession) -> dict:
+    cat_total = await session.execute(
+        text("SELECT COUNT(*) FROM unified_categories WHERE is_active = TRUE")
+    )
+    total_categories = cat_total.scalar() or 0
+
+    map_total = await session.execute(text("SELECT COUNT(*) FROM place_type_mappings"))
+    total_mappings = map_total.scalar() or 0
+
+    ent_total = await session.execute(text("SELECT COUNT(*) FROM entities WHERE is_active = TRUE"))
+    total_entities = ent_total.scalar() or 0
+
+    unified_count = await session.execute(
+        text(
+            "SELECT COUNT(*) FROM entities WHERE unified_category IS NOT NULL AND is_active = TRUE"
+        )
+    )
+    unified_entities = unified_count.scalar() or 0
+
+    pct_unified = round(unified_entities / total_entities * 100, 1) if total_entities else 0
+
+    low_conf = await session.execute(
+        text("SELECT COUNT(*) FROM place_type_mappings WHERE confidence < 100")
+    )
+    low_confidence_mappings = low_conf.scalar() or 0
+
+    by_cat = await session.execute(
+        text(
+            "SELECT unified_category, COUNT(*) as cnt FROM entities "
+            "WHERE unified_category IS NOT NULL AND is_active = TRUE "
+            "GROUP BY unified_category ORDER BY cnt DESC LIMIT 10"
+        )
+    )
+    entities_by_category = [{"category": r[0], "count": r[1]} for r in by_cat.fetchall()]
+
+    unmapped = await session.execute(
+        text(
+            "SELECT e.source, e.place_type, COUNT(*) as cnt FROM entities e "
+            "WHERE e.unified_category IS NULL AND e.is_active = TRUE "
+            "GROUP BY e.source, e.place_type ORDER BY cnt DESC LIMIT 10"
+        )
+    )
+    unmapped_types = [
+        {"source": r[0], "place_type": r[1], "count": r[2]} for r in unmapped.fetchall()
+    ]
+
+    return {
+        "total_categories": total_categories,
+        "total_mappings": total_mappings,
+        "total_entities": total_entities,
+        "unified_entities": unified_entities,
+        "pct_unified": pct_unified,
+        "low_confidence_mappings": low_confidence_mappings,
+        "entities_by_category": entities_by_category,
+        "unmapped_types": unmapped_types,
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, session: AsyncSession = Depends(get_session)):
@@ -502,3 +560,329 @@ async def admin_settings_test_llm():
     if result.startswith("ERROR"):
         return HTMLResponse(f'<div class="toast error">{result}</div>')
     return HTMLResponse(f'<div class="toast success">Connection OK — Response: {result}</div>')
+
+
+# Unified data stats page
+
+
+@router.get("/unified-data", response_class=HTMLResponse)
+async def admin_unified_data(request: Request, session: AsyncSession = Depends(get_session)):
+    stats = await get_unified_stats(session)
+    return templates.TemplateResponse(
+        request, "unified_data.html", {"active": "unified_data", "stats": stats}
+    )
+
+
+# Taxonomy management
+
+
+@router.get("/taxonomy", response_class=HTMLResponse)
+async def admin_taxonomy(request: Request, session: AsyncSession = Depends(get_session)):
+    rows = await session.execute(
+        text(
+            "SELECT uc.id, uc.slug, uc.name, uc.parent_id, uc.icon, uc.sort_order, uc.is_active, "
+            "(SELECT COUNT(*) FROM unified_categories WHERE parent_id = uc.id AND is_active = TRUE) AS children_count, "
+            "(SELECT COUNT(*) FROM entities WHERE unified_category = uc.slug AND is_active = TRUE) AS entity_count "
+            "FROM unified_categories uc WHERE uc.is_active = TRUE ORDER BY uc.sort_order, uc.name"
+        )
+    )
+    cats = []
+    for r in rows.fetchall():
+        cats.append(
+            {
+                "id": r[0],
+                "slug": r[1],
+                "name": r[2],
+                "parent_id": r[3],
+                "icon": r[4],
+                "sort_order": r[5],
+                "is_active": r[6],
+                "children_count": r[7],
+                "entity_count": r[8],
+            }
+        )
+
+    parents = [c for c in cats if c["parent_id"] is None]
+    return templates.TemplateResponse(
+        request,
+        "taxonomy/browse.html",
+        {"active": "taxonomy", "categories": cats, "parents": parents},
+    )
+
+
+@router.post("/taxonomy", response_class=HTMLResponse)
+async def admin_taxonomy_create(request: Request, session: AsyncSession = Depends(get_session)):
+    form = await request.form()
+    name = form.get("name", "").strip()
+    slug = form.get("slug", "").strip()
+    icon = form.get("icon", "").strip() or None
+    parent_id = form.get("parent_id", "").strip() or None
+    sort_order = int(form.get("sort_order", 0) or 0)
+
+    if parent_id:
+        parent_id = int(parent_id)
+
+    if not name or not slug:
+        return HTMLResponse('<div class="toast error">Name and slug are required</div>')
+
+    stmt = text(
+        "INSERT INTO unified_categories (slug, name, parent_id, icon, sort_order) "
+        "VALUES (:slug, :name, :parent_id, :icon, :sort_order)"
+    )
+    try:
+        await session.execute(
+            stmt,
+            {
+                "slug": slug,
+                "name": name,
+                "parent_id": parent_id,
+                "icon": icon,
+                "sort_order": sort_order,
+            },
+        )
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        return HTMLResponse(f'<div class="toast error">{e}</div>')
+
+    return HTMLResponse(f'<div class="toast success">Category "{name}" created</div>')
+
+
+@router.put("/taxonomy/{category_id}", response_class=HTMLResponse)
+async def admin_taxonomy_update(
+    request: Request, category_id: int, session: AsyncSession = Depends(get_session)
+):
+    form = await request.form()
+    name = form.get("name", "").strip()
+    icon = form.get("icon", "").strip() or None
+    parent_id = form.get("parent_id", "").strip() or None
+    sort_order = int(form.get("sort_order", 0) or 0)
+
+    if parent_id:
+        parent_id = int(parent_id)
+
+    if not name:
+        return HTMLResponse('<div class="toast error">Name is required</div>')
+
+    stmt = text(
+        "UPDATE unified_categories SET name = :name, icon = :icon, parent_id = :parent_id, sort_order = :sort_order "
+        "WHERE id = :id AND is_active = TRUE"
+    )
+    await session.execute(
+        stmt,
+        {
+            "id": category_id,
+            "name": name,
+            "icon": icon,
+            "parent_id": parent_id,
+            "sort_order": sort_order,
+        },
+    )
+    await session.commit()
+    return HTMLResponse(f'<div class="toast success">Category "{name}" updated</div>')
+
+
+@router.delete("/taxonomy/{category_id}", response_class=HTMLResponse)
+async def admin_taxonomy_delete(
+    request: Request, category_id: int, session: AsyncSession = Depends(get_session)
+):
+    stmt = text("UPDATE unified_categories SET is_active = FALSE WHERE id = :id")
+    await session.execute(stmt, {"id": category_id})
+    await session.commit()
+    return HTMLResponse('<div class="toast success">Category deactivated</div>')
+
+
+# Mapping management
+
+
+@router.get("/mappings", response_class=HTMLResponse)
+async def admin_mappings(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    source: str = "",
+    min_confidence: int = 0,
+    page_size: int = 50,
+    cursor: str | None = None,
+):
+    conditions = ["1=1"]
+    params: dict = {}
+    if source:
+        conditions.append("ptm.source = :source")
+        params["source"] = source
+    if min_confidence:
+        conditions.append("ptm.confidence >= :min_conf")
+        params["min_conf"] = min_confidence
+
+    where = " AND ".join(conditions)
+
+    count_sql = text(f"SELECT COUNT(*) FROM place_type_mappings ptm WHERE {where}")
+    result = await session.execute(count_sql, params)
+    total = result.scalar() or 0
+
+    if cursor:
+        try:
+            cursor_data = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+            cursor_id = cursor_data["id"]
+            conditions.append("ptm.id > :cursor_id")
+            params["cursor_id"] = cursor_id
+        except Exception:
+            pass
+
+    where2 = " AND ".join(conditions)
+    sql = text(
+        f"SELECT ptm.id, ptm.source, ptm.source_place_type, ptm.unified_category_id, "
+        f"ptm.confidence, ptm.is_manual, ptm.notes, "
+        f"uc.slug AS unified_slug, uc.name AS unified_name "
+        f"FROM place_type_mappings ptm "
+        f"LEFT JOIN unified_categories uc ON uc.id = ptm.unified_category_id "
+        f"WHERE {where2} ORDER BY ptm.id LIMIT :limit"
+    )
+    params["limit"] = page_size + 1
+    result = await session.execute(sql, params)
+    rows = result.fetchall()
+
+    has_more = len(rows) > page_size
+    mappings = []
+    for r in rows[:page_size]:
+        mappings.append(
+            {
+                "id": r[0],
+                "source": r[1],
+                "source_place_type": r[2],
+                "unified_category_id": r[3],
+                "confidence": r[4],
+                "is_manual": r[5],
+                "notes": r[6],
+                "unified_slug": r[7],
+                "unified_name": r[8],
+            }
+        )
+
+    next_cursor = None
+    if has_more and mappings:
+        last = mappings[-1]
+        next_cursor = base64.urlsafe_b64encode(json.dumps({"id": last["id"]}).encode()).decode()
+
+    sources = await get_sources(session)
+    all_cats_result = await session.execute(
+        text("SELECT id, slug, name FROM unified_categories WHERE is_active = TRUE ORDER BY name")
+    )
+    all_cats = [{"id": r[0], "slug": r[1], "name": r[2]} for r in all_cats_result.fetchall()]
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        return templates.TemplateResponse(
+            request,
+            "mappings/_list.html",
+            {"mappings": mappings, "total": total, "page_size": page_size, "cursor": next_cursor},
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "mappings/browse.html",
+        {
+            "active": "mappings",
+            "mappings": mappings,
+            "total": total,
+            "page_size": page_size,
+            "cursor": next_cursor,
+            "sources": sources,
+            "source": source,
+            "min_confidence": min_confidence,
+            "all_categories": all_cats,
+        },
+    )
+
+
+@router.post("/mappings", response_class=HTMLResponse)
+async def admin_mappings_create(request: Request, session: AsyncSession = Depends(get_session)):
+    form = await request.form()
+    source = form.get("source", "").strip()
+    source_place_type = form.get("source_place_type", "").strip()
+    unified_category_id = form.get("unified_category_id", "").strip() or None
+    confidence = int(form.get("confidence", 100) or 100)
+    is_manual = form.get("is_manual", "false") == "true"
+    notes = form.get("notes", "").strip() or None
+
+    if not source or not source_place_type:
+        return HTMLResponse('<div class="toast error">Source and place type are required</div>')
+
+    if unified_category_id:
+        unified_category_id = int(unified_category_id)
+
+    stmt = text(
+        "INSERT INTO place_type_mappings (source, source_place_type, unified_category_id, confidence, is_manual, notes) "
+        "VALUES (:source, :place_type, :cat_id, :conf, :manual, :notes) "
+        "ON CONFLICT (source, source_place_type) DO UPDATE SET "
+        "unified_category_id = EXCLUDED.unified_category_id, "
+        "confidence = EXCLUDED.confidence, is_manual = EXCLUDED.is_manual, notes = EXCLUDED.notes"
+    )
+    try:
+        await session.execute(
+            stmt,
+            {
+                "source": source,
+                "place_type": source_place_type,
+                "cat_id": unified_category_id,
+                "conf": confidence,
+                "manual": is_manual,
+                "notes": notes,
+            },
+        )
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        return HTMLResponse(f'<div class="toast error">{e}</div>')
+
+    return HTMLResponse(
+        f'<div class="toast success">Mapping for "{source}/{source_place_type}" saved</div>'
+    )
+
+
+@router.put("/mappings/{mapping_id}", response_class=HTMLResponse)
+async def admin_mappings_update(
+    request: Request, mapping_id: int, session: AsyncSession = Depends(get_session)
+):
+    form = await request.form()
+    unified_category_id = form.get("unified_category_id", "").strip() or None
+    confidence = int(form.get("confidence", 100) or 100)
+    is_manual = form.get("is_manual", "false") == "true"
+    notes = form.get("notes", "").strip() or None
+
+    if unified_category_id:
+        unified_category_id = int(unified_category_id)
+
+    stmt = text(
+        "UPDATE place_type_mappings SET unified_category_id = :cat_id, "
+        "confidence = :conf, is_manual = :manual, notes = :notes WHERE id = :id"
+    )
+    await session.execute(
+        stmt,
+        {
+            "id": mapping_id,
+            "cat_id": unified_category_id,
+            "conf": confidence,
+            "manual": is_manual,
+            "notes": notes,
+        },
+    )
+    await session.commit()
+    return HTMLResponse('<div class="toast success">Mapping updated</div>')
+
+
+@router.delete("/mappings/{mapping_id}", response_class=HTMLResponse)
+async def admin_mappings_delete(
+    request: Request, mapping_id: int, session: AsyncSession = Depends(get_session)
+):
+    row = await session.execute(
+        text("SELECT source FROM place_type_mappings WHERE id = :id"), {"id": mapping_id}
+    )
+    source = row.scalar()
+    await session.execute(
+        text("DELETE FROM place_type_mappings WHERE id = :id"), {"id": mapping_id}
+    )
+    await session.commit()
+    return HTMLResponse(
+        f'<div class="toast success">Mapping deleted. '
+        f'<a href="/admin/scripts/unify_place_types">Re-run unification for {source}</a></div>'
+    )
