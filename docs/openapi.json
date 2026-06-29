@@ -6,6 +6,648 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/admin/": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Dashboard",
+        "operationId": "admin_dashboard_admin__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Dashboard",
+        "operationId": "admin_dashboard_admin_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/entities": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Entities",
+        "operationId": "admin_entities_admin_entities_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Source"
+            }
+          },
+          {
+            "name": "place_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Place Type"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Country"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/entities/{entity_id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Entity Detail",
+        "operationId": "admin_entity_detail_admin_entities__entity_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/classifications": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Classifications",
+        "operationId": "admin_classifications_admin_classifications_get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Category"
+            }
+          },
+          {
+            "name": "value_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Value Code"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/scripts": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Scripts",
+        "operationId": "admin_scripts_admin_scripts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/admin/scripts/{script_name}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Script Detail",
+        "operationId": "admin_script_detail_admin_scripts__script_name__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "script_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Script Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/scripts/{script_name}/run": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Script Run",
+        "operationId": "admin_script_run_admin_scripts__script_name__run_post",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "script_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Script Name"
+            }
+          },
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/scripts/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Script Status",
+        "operationId": "admin_script_status_admin_scripts_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/settings": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Settings Page",
+        "operationId": "admin_settings_page_admin_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Settings Save",
+        "operationId": "admin_settings_save_admin_settings_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
+    "/admin/settings/test-llm": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Settings Test Llm",
+        "operationId": "admin_settings_test_llm_admin_settings_test_llm_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBasic": []
+          }
+        ]
+      }
+    },
     "/search": {
       "get": {
         "tags": [
@@ -63,6 +705,23 @@
                 }
               ],
               "title": "Place Type"
+            }
+          },
+          {
+            "name": "unified_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unified Category"
             }
           },
           {
@@ -229,6 +888,23 @@
             }
           },
           {
+            "name": "unified_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unified Category"
+            }
+          },
+          {
             "name": "page_size",
             "in": "query",
             "required": false,
@@ -350,6 +1026,23 @@
                 }
               ],
               "title": "Place Type"
+            }
+          },
+          {
+            "name": "unified_category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unified Category"
             }
           },
           {
@@ -630,6 +1323,55 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/unified-categories": {
+      "get": {
+        "tags": [
+          "Read"
+        ],
+        "summary": "Unified Categories Endpoint",
+        "operationId": "unified_categories_endpoint_unified_categories_get",
+        "parameters": [
+          {
+            "name": "timeout_override",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Override"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnifiedCategoriesResponse"
+                }
               }
             }
           },
@@ -1453,18 +2195,6 @@
             "minLength": 1,
             "title": "Place Type"
           },
-          "category_class": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category Class"
-          },
           "secondary_types": {
             "anyOf": [
               {
@@ -2030,7 +2760,7 @@
             "type": "string",
             "title": "Place Type"
           },
-          "category_class": {
+          "unified_category": {
             "anyOf": [
               {
                 "type": "string"
@@ -2039,7 +2769,18 @@
                 "type": "null"
               }
             ],
-            "title": "Category Class"
+            "title": "Unified Category"
+          },
+          "unified_subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unified Subcategory"
           },
           "secondary_types": {
             "anyOf": [
@@ -2562,6 +3303,28 @@
             "type": "string",
             "title": "Place Type"
           },
+          "unified_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unified Category"
+          },
+          "unified_subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unified Subcategory"
+          },
           "summary": {
             "anyOf": [
               {
@@ -2792,18 +3555,6 @@
               }
             ],
             "title": "Place Type"
-          },
-          "category_class": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 100
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category Class"
           },
           "secondary_types": {
             "anyOf": [
@@ -3614,6 +4365,85 @@
         ],
         "title": "MediaItem"
       },
+      "UnifiedCategoriesResponse": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedCategoryItem"
+            },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categories"
+        ],
+        "title": "UnifiedCategoriesResponse"
+      },
+      "UnifiedCategoryItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/UnifiedCategoryItem"
+            },
+            "type": "array",
+            "title": "Children",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "slug",
+          "name"
+        ],
+        "title": "UnifiedCategoryItem"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -3656,6 +4486,10 @@
       }
     },
     "securitySchemes": {
+      "HTTPBasic": {
+        "type": "http",
+        "scheme": "basic"
+      },
       "APIKeyHeader": {
         "type": "apiKey",
         "in": "header",

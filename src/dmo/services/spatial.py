@@ -12,12 +12,14 @@ async def nearby(
     radius_km: float,
     source: str | None = None,
     place_type: str | None = None,
+    unified_category: str | None = None,
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
     """Find entities within radius of a point, sorted by distance.
 
     Uses ST_DWithin for spatial filtering and ST_Distance for sorting.
+    Auto-detects unified_category level (top/leaf) for filtering.
     Returns (items, total, next_cursor, has_more).
     """
     radius_m = radius_km * 1000
@@ -31,6 +33,16 @@ async def nearby(
     if place_type:
         where_parts.append("entities.place_type = :ptype")
         params["ptype"] = place_type
+    if unified_category:
+        from dmo.services.taxonomy import get_category_level
+
+        level = await get_category_level(session, unified_category)
+        if level == "top":
+            where_parts.append("entities.unified_category = :ucat")
+            params["ucat"] = unified_category
+        elif level == "leaf":
+            where_parts.append("entities.unified_subcategory = :uscat")
+            params["uscat"] = unified_category
 
     cursor_filter = ""
     if cursor:
@@ -104,12 +116,14 @@ async def map_query(
     max_lat: float,
     source: str | None = None,
     place_type: str | None = None,
+    unified_category: str | None = None,
     page_size: int = 20,
     cursor: str | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
     """Find entities within a bounding box.
 
     Uses ST_Intersects with ST_MakeEnvelope for bounding box filtering.
+    Auto-detects unified_category level (top/leaf) for filtering.
     Returns (items, total, next_cursor, has_more).
     """
     where_parts = ["entities.is_active = true"]
@@ -121,6 +135,16 @@ async def map_query(
     if place_type:
         where_parts.append("entities.place_type = :ptype")
         params["ptype"] = place_type
+    if unified_category:
+        from dmo.services.taxonomy import get_category_level
+
+        level = await get_category_level(session, unified_category)
+        if level == "top":
+            where_parts.append("entities.unified_category = :ucat")
+            params["ucat"] = unified_category
+        elif level == "leaf":
+            where_parts.append("entities.unified_subcategory = :uscat")
+            params["uscat"] = unified_category
 
     cursor_filter = ""
     if cursor:

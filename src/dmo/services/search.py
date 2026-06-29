@@ -10,6 +10,7 @@ async def search(
     q: str | None = None,
     source: str | None = None,
     place_type: str | None = None,
+    unified_category: str | None = None,
     country: str | None = None,
     page_size: int = 20,
     cursor: str | None = None,
@@ -17,6 +18,7 @@ async def search(
     """Full-text search with filters and cursor pagination.
 
     Uses pg_trgm for text matching on name and summary fields.
+    Auto-detects unified_category level (top/leaf) for filtering.
     Returns (items, total, next_cursor, has_more).
     """
     where_parts = ["entities.is_active = true"]
@@ -31,6 +33,16 @@ async def search(
     if country:
         where_parts.append("entities.country = :country")
         params["country"] = country
+    if unified_category:
+        from dmo.services.taxonomy import get_category_level
+
+        level = await get_category_level(session, unified_category)
+        if level == "top":
+            where_parts.append("entities.unified_category = :ucat")
+            params["ucat"] = unified_category
+        elif level == "leaf":
+            where_parts.append("entities.unified_subcategory = :uscat")
+            params["uscat"] = unified_category
     if q:
         where_parts.append("(entities.name % :query OR entities.summary % :query)")
         params["query"] = q

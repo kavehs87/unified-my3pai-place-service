@@ -18,6 +18,7 @@ from dmo.models.schemas import (
     EntityListItem,
     EntityUpdate,
     MediaCreate,
+    UnifiedCategoriesResponse,
 )
 from dmo.services.cache import cache_get_or_set, cache_set_async
 from dmo.services.classifications import (
@@ -31,6 +32,7 @@ from dmo.services.detail import get_open_status as get_open_status_service
 from dmo.services.search import search as search_service
 from dmo.services.spatial import map_query as map_query_service
 from dmo.services.spatial import nearby as nearby_service
+from dmo.services.taxonomy import list_categories as list_taxonomy_service
 from dmo.services.write import (
     EntityError,
 )
@@ -78,6 +80,7 @@ async def search_endpoint(
     q: str | None = Query(None, max_length=500),
     source: str | None = Query(None, max_length=200),
     place_type: str | None = Query(None, max_length=200),
+    unified_category: str | None = Query(None, max_length=200),
     country: str | None = Query(None, max_length=10),
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
@@ -86,6 +89,7 @@ async def search_endpoint(
         "q": q,
         "source": source,
         "place_type": place_type,
+        "unified_category": unified_category,
         "country": country,
         "page_size": page_size,
         "cursor": cursor,
@@ -93,7 +97,14 @@ async def search_endpoint(
 
     async def _fetch_search() -> str:
         items, total, next_cursor, has_more = await search_service(
-            session, q, source, place_type, country, cursor=cursor, page_size=page_size
+            session,
+            q,
+            source,
+            place_type,
+            unified_category,
+            country,
+            cursor=cursor,
+            page_size=page_size,
         )
         result = CursorPaginatedResponse[EntityListItem](
             results=items, total=total, next_cursor=next_cursor, has_more=has_more
@@ -120,6 +131,7 @@ async def nearby_endpoint(
     radius_km: float = Query(10, gt=0, le=500),
     source: str | None = Query(None, max_length=200),
     place_type: str | None = Query(None, max_length=200),
+    unified_category: str | None = Query(None, max_length=200),
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
@@ -129,13 +141,22 @@ async def nearby_endpoint(
         "radius_km": radius_km,
         "source": source,
         "place_type": place_type,
+        "unified_category": unified_category,
         "page_size": page_size,
         "cursor": cursor,
     }
 
     async def _fetch_nearby() -> str:
         items, total, next_cursor, has_more = await nearby_service(
-            session, lat, lon, radius_km, source, place_type, cursor=cursor, page_size=page_size
+            session,
+            lat,
+            lon,
+            radius_km,
+            source,
+            place_type,
+            unified_category,
+            cursor=cursor,
+            page_size=page_size,
         )
         result = CursorPaginatedResponse[EntityListItem](
             results=items, total=total, next_cursor=next_cursor, has_more=has_more
@@ -162,6 +183,7 @@ async def map_endpoint(
     bbox: str = Query(..., description="minLon,minLat,maxLon,maxLat", max_length=100),
     source: str | None = Query(None, max_length=200),
     place_type: str | None = Query(None, max_length=200),
+    unified_category: str | None = Query(None, max_length=200),
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
@@ -182,6 +204,7 @@ async def map_endpoint(
         "bbox": bbox,
         "source": source,
         "place_type": place_type,
+        "unified_category": unified_category,
         "page_size": page_size,
         "cursor": cursor,
     }
@@ -195,6 +218,7 @@ async def map_endpoint(
             max_lat,
             source,
             place_type,
+            unified_category,
             cursor=cursor,
             page_size=page_size,
         )
@@ -274,6 +298,29 @@ async def classifications_endpoint(
         result = CursorPaginatedResponse[ClassificationListItem].model_validate(
             json.loads(fallback_json)
         )
+    return JSONResponse(
+        content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
+    )
+
+
+@router.get("/unified-categories", response_model=UnifiedCategoriesResponse, tags=["Read"])
+async def unified_categories_endpoint(
+    session: SessionDep,
+):
+    async def _fetch_taxonomy() -> str:
+        categories = await list_taxonomy_service(session)
+        result = UnifiedCategoriesResponse(categories=categories)
+        return json.dumps(result.model_dump(mode="json"))
+
+    cached, cache_status = await cache_get_or_set(
+        "unified_categories", {}, fetch_fn=_fetch_taxonomy, ttl=300
+    )
+    if cached:
+        result = UnifiedCategoriesResponse.model_validate(json.loads(cached))
+    else:
+        fallback_json = await _fetch_taxonomy()
+        await cache_set_async("unified_categories", {}, fallback_json, ttl=300)
+        result = UnifiedCategoriesResponse.model_validate(json.loads(fallback_json))
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )

@@ -74,6 +74,8 @@ class EntityListItem(BaseModel):
     source_id: str
     name: str
     place_type: str
+    unified_category: str | None = None
+    unified_subcategory: str | None = None
     summary: str | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -339,3 +341,20 @@ class OpenStatus(BaseModel):
     is_open: bool | None = None
     opens_at: datetime | None = None
     closes_at: datetime | None = None
+
+
+class UnifiedCategoryItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    slug: str
+    name: str
+    parent_id: int | None = None
+    icon: str | None = None
+    sort_order: int = 0
+    count: int = 0
+    children: list["UnifiedCategoryItem"] = []
+
+
+class UnifiedCategoriesResponse(BaseModel):
+    categories: list[UnifiedCategoryItem]
