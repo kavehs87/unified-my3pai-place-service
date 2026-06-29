@@ -67,9 +67,7 @@ async def test_entity_unified_fields(session: AsyncSession):
     await session.commit()
     await session.refresh(entity)
 
-    result = await session.exec(
-        select(Entity).where(Entity.id == entity.id)
-    )
+    result = await session.exec(select(Entity).where(Entity.id == entity.id))
     fetched = result.first()
     assert fetched.unified_category == "food_drink"
     assert fetched.unified_subcategory == "restaurant"

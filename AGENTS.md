@@ -24,6 +24,8 @@ Python 3.12+ | FastAPI | PostgreSQL + PostGIS | asyncpg + SQLModel | Alembic | R
 10. **Cache validated before serving** — all cache hits must pass through `model_validate()` or `TypeAdapter.validate_python()`
 11. **String fields auto-stripped** — Pydantic `model_validator(mode='before')` handles whitespace, no `strip_whitespace` in Field()
 12. **X-Request-ID must be UUID** — client-supplied IDs validated, non-UUID rejected and replaced
+13. **Derived fields never set by importers** — `unified_category`, `unified_subcategory`, `unified_category_id`, `quality_score`, `enriched_at` are computed by admin scripts. `EntityCreate` silently ignores them.
+14. **Slug immutability** — `unified_categories.slug` cannot be renamed after creation. Admin UI disables slug field on edit; backend excludes slug from UPDATE.
 
 ## Query Patterns
 
@@ -69,7 +71,7 @@ Always filter `is_active = TRUE` in search queries (entities, media, classificat
 - **TTLs:** 5 min (search/nearby/map/classifications/categories), 30 min (detail), 60 s (open-status)
 - **Stampede protection:** `SET NX` distributed lock (`{key}:lock`) with 5s timeout. One request fetches, others poll cache every 50ms up to lock timeout.
 - **Invalidation strategy:**
-  - **Single-entity writes:** Clear all 7 patterns (`dmo:detail:*`, `dmo:open_status:*`, `dmo:search:*`, `dmo:nearby:*`, `dmo:map:*`, `dmo:classifications:*`, `dmo:categories:*`)
+  - **Single-entity writes:** Clear all 8 patterns (`dmo:detail:*`, `dmo:open_status:*`, `dmo:search:*`, `dmo:nearby:*`, `dmo:map:*`, `dmo:classifications:*`, `dmo:categories:*`, `dmo:unified_categories:*`)
   - **Bulk upsert (>20 entities):** Single `dmo:*` wildcard SCAN (O(1) instead of O(n))
   - **Bulk upsert (≤20 entities):** Per-entity targeted invalidation
   - **Write order:** Invalidate cache BEFORE `session.commit()` — prevents stale reads
@@ -105,13 +107,14 @@ GET  /classifications/categories   ← BEFORE /classifications
 GET  /classifications              ← BEFORE generic path
 DELETE /classifications/{id}       ← BEFORE generic path
 DELETE /media/{media_id}           ← BEFORE generic path
+GET  /unified-categories           ← BEFORE catch-all (single-segment, no collision)
 GET  /{source}/{source_id}         ← LAST (catch-all path param)
 ```
 
 ### OpenAPI Tags
 | Tag | Endpoints |
 |-----|-----------|
-| `Read` | All 6 GET endpoints (search, nearby, map, detail, classifications, categories) |
+| `Read` | All 7 GET endpoints (search, nearby, map, detail, classifications, categories, unified-categories) |
 | `Write` | All 8 POST/PUT/DELETE endpoints |
 | `System` | `/health`, `/metrics` |
 
@@ -151,11 +154,23 @@ src/dmo/
 │   ├── router.py        # All REST endpoints (read + write) — tags + auth
 │   ├── health.py        # /health with DB + Redis checks (1.5s timeout each)
 │   └── metrics.py       # /metrics Prometheus endpoint
+├── admin/
+│   ├── router.py        # Admin UI routes (taxonomy, mappings, scripts)
+│   └── templates/       # Jinja2 + HTMX admin templates
+├── admin_scripts/       # Auto-discovered via pkgutil
+│   ├── base.py          # AdminScript ABC, ScriptMeta, ScriptParameter, ScriptResult
+│   ├── registry.py      # Auto-discovery and script listing
+│   ├── normalize_place_types.py   # Fix: strip/lowercase place_type
+│   ├── unify_place_types.py       # Unify: map entities to unified categories
+│   ├── extract_attributes.py      # Fix: extract website/thumbnail
+│   ├── unify_classifications.py   # Unify: backfill classifications
+│   ├── clean_dzt_data.py          # Heal: fix DZT country/region
+│   └── ...              # Additional scripts (enrich, score, heal)
 ├── middleware/
 │   ├── request_id.py    # X-Request-ID generation, UUID validation, request logging
 │   └── rate_limit.py    # Per-IP Redis sliding-window (X-Forwarded-For aware, count-before-add)
 ├── models/
-│   ├── database.py      # SQLModel tables (Entity, Media, Classification, Route)
+│   ├── database.py      # SQLModel tables (Entity, Media, Classification, Route, UnifiedCategory, PlaceTypeMapping)
 │   └── schemas.py       # Pydantic request/response schemas (V3-ready, no strip_whitespace)
 └── services/
     ├── cache.py         # SHA-256-hashed Redis cache + stampede protection (5s lock)
@@ -164,6 +179,7 @@ src/dmo/
     ├── pagination.py    # Cursor encode/decode (strict UUID/int validation)
     ├── search.py        # Text search (pg_trgm op('%')) + single-pass COUNT(*) OVER()
     ├── spatial.py       # Nearby (ST_DWithin) + map (ST_Intersects) with cursor pagination
+    ├── taxonomy.py      # Unified taxonomy tree + category level detection
     └── write.py         # Create/update/delete + advisory locks + cache invalidation
 ```
 
@@ -171,12 +187,13 @@ src/dmo/
 
 ### Read (public)
 ```
-GET  /search?q=&source=&place_type=&country=&page_size=&cursor=
-GET  /nearby?lat=&lon=&radius_km=&source=&place_type=&page_size=&cursor=
-GET  /map?bbox=&source=&place_type=&page_size=&cursor=
+GET  /search?q=&source=&place_type=&country=&unified_category=&page_size=&cursor=
+GET  /nearby?lat=&lon=&radius_km=&source=&place_type=&unified_category=&page_size=&cursor=
+GET  /map?bbox=&source=&place_type=&unified_category=&page_size=&cursor=
 GET  /{source}/{source_id}
 GET  /classifications/categories
 GET  /classifications?entity_id=&category=&value_code=&page_size=&cursor=
+GET  /unified-categories
 ```
 
 ### Write (requires X-API-Key header)
@@ -239,10 +256,10 @@ See `plans/unified-dmo-schema.md` for complete schema, field mappings, design de
 - Cache disabled in tests via autouse fixture
 - Session cleanup runs at start AND end of each test
 - Package-locally-scoped imports within test functions (avoid top-level imports that trigger app init)
-- **Test VM**: `root@10.0.0.93` (old staging VM) — use for all test runs to avoid cleaning production data on new VM
-- **Test DB URL**: `postgresql+asyncpg://postgres:changeme@10.0.0.93:5432/dmo`
-- **Test Redis URL**: `redis://10.0.0.93:6379`
-- Run: `TEST_DB_URL=postgresql+asyncpg://postgres:changeme@10.0.0.93:5432/dmo TEST_REDIS_URL=redis://10.0.0.93:6379 uv run pytest tests/`
+- **Test VM**: `root@10.0.1.8` — use for all test runs (isolated from Staging VM)
+- **Test DB URL**: `postgresql+asyncpg://postgres:changeme@10.0.1.8:5432/dmo`
+- **Test Redis URL**: `redis://10.0.1.8:6379`
+- Run: `TEST_DB_URL=postgresql+asyncpg://postgres:changeme@10.0.1.8:5432/dmo TEST_REDIS_URL=redis://10.0.1.8:6379 uv run pytest tests/`
 - Lint: `uv run ruff check src/ tests/`
 - Format: `uv run ruff format src/ tests/`
 - **Must pass before commit:** all tests + ruff check (244 tests, 0 lint errors)
@@ -286,6 +303,8 @@ See `plans/unified-dmo-schema.md` for complete schema, field mappings, design de
 - **Error responses**: `{error, message, code, request_id}` format via global exception handlers.
 - **Statement timeout**: Set via `SELECT set_config('statement_timeout', :timeout, false)` (parameterized function call, not raw SET). Read sessions: 10s. Write sessions: 30s.
 - **Pydantic V3 compatibility**: No `strip_whitespace` in `Field()`. All string stripping via `model_validator(mode='before')`.
+- **Unified category filtering**: `unified_category` query param auto-detects top-level vs leaf via `get_category_level()`. Top-level slugs filter `unified_category` column; leaf slugs filter `unified_subcategory` column.
+- **Slug immutability**: `unified_categories.slug` cannot be renamed after creation. Admin UI disables the slug field on edit; backend PUT endpoint excludes slug from the UPDATE statement entirely.
 
 ## Common Pitfalls
 
@@ -298,6 +317,7 @@ See `plans/unified-dmo-schema.md` for complete schema, field mappings, design de
 7. **Don't cache open-status for more than 60s** — `is_open`/`opens_at`/`closes_at` are time-sensitive.
 8. **Don't hardcode lock IDs** — use `hash(source) % (2**31)` for per-source advisory locks.
 9. **Don't trust client IP directly** — use `X-Forwarded-For` when `TRUST_PROXY_HEADERS=true`.
+10. **Don't set derived fields in importers** — `unified_category`, `unified_subcategory`, `unified_category_id`, `quality_score`, `enriched_at` are computed by admin scripts. Importers set `place_type` only.
 
 ## Production Deployment
 

@@ -69,7 +69,7 @@
       <td style="font-size:0.75rem;color:var(--text-muted);">{{ c.entity_count }}</td>
       <td>
         <div class="flex gap-2">
-          <button class="btn btn-outline btn-sm" onclick="editCategory({{ c.id }}, '{{ c.name }}', '{{ c.icon or '' }}', {{ c.parent_id|default('null') }}, {{ c.sort_order }})">Edit</button>
+          <button class="btn btn-outline btn-sm" onclick="editCategory({{ c.id }}, '{{ c.name }}', '{{ c.slug }}', '{{ c.icon or '' }}', {{ c.parent_id|default('null') }}, {{ c.sort_order }})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteCategory({{ c.id }}, '{{ c.name }}')">Delete</button>
         </div>
       </td>
@@ -117,11 +117,11 @@
 </div>
 
 <script>
-function editCategory(id, name, icon, parentId, sortOrder) {
+function editCategory(id, name, slug, icon, parentId, sortOrder) {
   document.getElementById('edit-form').style.display = 'block';
   document.getElementById('edit-name').value = name;
+  document.getElementById('edit-slug').value = slug;
   document.getElementById('edit-icon').value = icon;
-  document.getElementById('edit-slug').value = '';
   document.getElementById('edit-sort_order').value = sortOrder;
   document.getElementById('edit-parent_select').value = parentId || '';
 

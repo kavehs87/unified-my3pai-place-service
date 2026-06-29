@@ -8,9 +8,7 @@ test_db_url = os.environ.get(
 )
 os.environ["DATABASE_URL"] = test_db_url
 os.environ["DATABASE_URL_SYNC"] = test_db_url.replace("asyncpg", "psycopg2")
-os.environ["REDIS_URL"] = os.environ.get(
-    "TEST_REDIS_URL", "redis://localhost:6379/0"
-)
+os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/0")
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -19,12 +17,12 @@ from sqlmodel import SQLModel, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.main import app
+from dmo.services.cache import cache_delete_pattern as _orig_cache_delete_pattern
 
 # Save originals before any patching
 from dmo.services.cache import cache_get as _orig_cache_get
 from dmo.services.cache import cache_get_or_set as _orig_cache_get_or_set
 from dmo.services.cache import cache_set as _orig_cache_set
-from dmo.services.cache import cache_delete_pattern as _orig_cache_delete_pattern
 
 TEST_DB_URL = os.environ.get(
     "TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
@@ -58,9 +56,7 @@ def _disable_cache(request):
     )
 
     # Don't patch cache_delete_pattern for cache tests
-    is_cache_test = "test_cache" in (
-        request.node.module.__name__ if request.node.module else ""
-    )
+    is_cache_test = "test_cache" in (request.node.module.__name__ if request.node.module else "")
 
     cache_module.cache_get = _no_op_get
     cache_module.cache_set = _no_op_set

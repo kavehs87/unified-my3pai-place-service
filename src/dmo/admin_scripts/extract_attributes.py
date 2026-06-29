@@ -61,7 +61,7 @@ class ExtractAttributes(AdminScript):
                   AND e.attributes ? 'tourpedia_external_links'
                   AND e.attributes->'tourpedia_external_links' != '{{}}'::jsonb
                   {skip_website}
-                  {source_clause if source == 'tourpedia' else ''}
+                  {source_clause if source == "tourpedia" else ""}
             """)
             results["tourpedia_website"] = await _dry_count(
                 tp_website_count, source_params if source == "tourpedia" else {}
@@ -74,7 +74,7 @@ class ExtractAttributes(AdminScript):
                   AND e.attributes ? 'tourpedia_photo_url'
                   AND NULLIF(e.attributes->>'tourpedia_photo_url', '') IS NOT NULL
                   {skip_thumb}
-                  {source_clause if source == 'tourpedia' else ''}
+                  {source_clause if source == "tourpedia" else ""}
             """)
             results["tourpedia_thumbnail"] = await _dry_count(
                 tp_thumb_count, source_params if source == "tourpedia" else {}
@@ -86,7 +86,7 @@ class ExtractAttributes(AdminScript):
                   AND e.is_active = TRUE
                   AND e.attributes::text ~ 'website'
                   {skip_website}
-                  {source_clause if source == 'osm' else ''}
+                  {source_clause if source == "osm" else ""}
             """)
             results["osm_website"] = await _dry_count(
                 osm_website_count, source_params if source == "osm" else {}
@@ -134,7 +134,7 @@ class ExtractAttributes(AdminScript):
                       AND e.attributes ? 'tourpedia_external_links'
                       AND e.attributes->'tourpedia_external_links' != '{{}}'::jsonb
                       {skip_website}
-                      {source_clause if source == 'tourpedia' else ''}
+                      {source_clause if source == "tourpedia" else ""}
                       AND e.id > :last_id
                     ORDER BY e.id
                     LIMIT :limit
@@ -160,13 +160,19 @@ class ExtractAttributes(AdminScript):
                 batch = 0
                 while True:
                     rows = (
-                        await write_session.execute(
-                            tp_website_select,
-                            {"last_id": last_id, "limit": batch_size, **(
-                                source_params if source == "tourpedia" else {}
-                            )},
+                        (
+                            await write_session.execute(
+                                tp_website_select,
+                                {
+                                    "last_id": last_id,
+                                    "limit": batch_size,
+                                    **(source_params if source == "tourpedia" else {}),
+                                },
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     if not rows:
                         break
                     result = await write_session.execute(tp_website_update, {"ids": list(rows)})
@@ -189,7 +195,7 @@ class ExtractAttributes(AdminScript):
                       AND e.attributes ? 'tourpedia_photo_url'
                       AND NULLIF(e.attributes->>'tourpedia_photo_url', '') IS NOT NULL
                       {skip_thumb}
-                      {source_clause if source == 'tourpedia' else ''}
+                      {source_clause if source == "tourpedia" else ""}
                       AND e.id > :last_id
                     ORDER BY e.id
                     LIMIT :limit
@@ -206,13 +212,19 @@ class ExtractAttributes(AdminScript):
                 batch = 0
                 while True:
                     rows = (
-                        await write_session.execute(
-                            tp_thumb_select,
-                            {"last_id": last_id, "limit": batch_size, **(
-                                source_params if source == "tourpedia" else {}
-                            )},
+                        (
+                            await write_session.execute(
+                                tp_thumb_select,
+                                {
+                                    "last_id": last_id,
+                                    "limit": batch_size,
+                                    **(source_params if source == "tourpedia" else {}),
+                                },
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     if not rows:
                         break
                     result = await write_session.execute(tp_thumb_update, {"ids": list(rows)})
@@ -234,7 +246,7 @@ class ExtractAttributes(AdminScript):
                       AND e.is_active = TRUE
                       AND e.attributes::text ~ 'website'
                       {skip_website}
-                      {source_clause if source == 'osm' else ''}
+                      {source_clause if source == "osm" else ""}
                       AND e.id > :last_id
                     ORDER BY e.id
                     LIMIT :limit
@@ -292,13 +304,19 @@ class ExtractAttributes(AdminScript):
                 batch = 0
                 while True:
                     rows = (
-                        await write_session.execute(
-                            osm_website_select,
-                            {"last_id": last_id, "limit": batch_size, **(
-                                source_params if source == "osm" else {}
-                            )},
+                        (
+                            await write_session.execute(
+                                osm_website_select,
+                                {
+                                    "last_id": last_id,
+                                    "limit": batch_size,
+                                    **(source_params if source == "osm" else {}),
+                                },
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     if not rows:
                         break
                     result = await write_session.execute(osm_website_update, {"ids": list(rows)})
@@ -365,11 +383,15 @@ class ExtractAttributes(AdminScript):
                 batch = 0
                 while True:
                     rows = (
-                        await write_session.execute(
-                            amenity_select,
-                            {"last_id": last_id, "limit": batch_size, **source_params},
+                        (
+                            await write_session.execute(
+                                amenity_select,
+                                {"last_id": last_id, "limit": batch_size, **source_params},
+                            )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     if not rows:
                         break
                     result = await write_session.execute(amenity_update, {"ids": list(rows)})

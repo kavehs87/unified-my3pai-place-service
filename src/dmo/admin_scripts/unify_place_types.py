@@ -78,7 +78,9 @@ class UnifyPlaceTypes(AdminScript):
                     GROUP BY e.place_type
                     ORDER BY cnt DESC
                 """)
-                unmapped_rows = (await write_session.execute(unmapped_sql, source_params)).fetchall()
+                unmapped_rows = (
+                    await write_session.execute(unmapped_sql, source_params)
+                ).fetchall()
                 details = [{"place_type": r[0], "count": r[1]} for r in unmapped_rows[:20]]
                 msg = (
                     f"Would unify {total} entities. "
@@ -119,9 +121,16 @@ class UnifyPlaceTypes(AdminScript):
             batch = 0
 
             while True:
-                ids = (await write_session.execute(
-                    select_ids_sql, {"last_id": last_id, "limit": batch_size, **source_params}
-                )).scalars().all()
+                ids = (
+                    (
+                        await write_session.execute(
+                            select_ids_sql,
+                            {"last_id": last_id, "limit": batch_size, **source_params},
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
                 if not ids:
                     break
                 await write_session.execute(update_sql, {"ids": list(ids)})
@@ -131,14 +140,11 @@ class UnifyPlaceTypes(AdminScript):
                 await write_session.commit()
                 if progress_callback:
                     progress_callback(
-                        f"Batch {batch}: updated {len(ids)} entities "
-                        f"(total: {total_updated})"
+                        f"Batch {batch}: updated {len(ids)} entities (total: {total_updated})"
                     )
         finally:
             await write_session.close()
             await write_engine.dispose()
 
         msg = f"Unified {total_updated} entities."
-        return ScriptResult(
-            success=True, message=msg, affected_count=total_updated
-        )
+        return ScriptResult(success=True, message=msg, affected_count=total_updated)

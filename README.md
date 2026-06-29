@@ -174,7 +174,7 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 # SSH tunnel to staging DB
 ssh -L 5432:db:5432 staging
 
-# Deploy to staging VM (10.0.0.87)
+# Deploy to staging VM (10.0.2.10)
 # Uses rsync + docker compose
 # See .opencode/skills/deploy-staging/ for full workflow
 ```

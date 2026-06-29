@@ -3,6 +3,7 @@
 Tests verify GZipMiddleware behavior using raw ASGI calls via asyncio.run()
 to avoid pytest-asyncio event loop interaction issues with GZipMiddleware.
 """
+
 import asyncio
 import gzip
 import json

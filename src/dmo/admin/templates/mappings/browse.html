@@ -5,6 +5,12 @@
   <p>Map source place types to unified categories</p>
 </div>
 
+<div class="card" style="background:var(--warning-bg,#fff3cd);border:1px solid var(--warning-border,#ffc107);margin-bottom:1rem;">
+  <p style="margin:0;font-size:0.85rem;color:var(--warning-text,#856404);">
+    <strong>⚠ M5 Warning:</strong> After creating, updating, or deleting a mapping, entity <code>unified_category</code> values for that source will be stale until you re-run unification. Use the "Re-run Unification" button above or the link in the toast message.
+  </p>
+</div>
+
 <div class="card">
   <form hx-get="/admin/mappings" hx-target="#mapping-results" hx-trigger="submit" hx-push-url="true" class="mb-4">
     <div class="form-row">
@@ -30,8 +36,10 @@
     <div class="flex gap-2">
       <button type="submit" class="btn btn-primary">Filter</button>
       <a href="/admin/mappings" class="btn btn-outline">Clear</a>
+      <button type="button" class="btn btn-outline" onclick="reunifySource(document.getElementById('source').value || '*')">Re-run Unification</button>
     </div>
   </form>
+  <div id="reunify-toast"></div>
 </div>
 
 <div class="card">
@@ -86,4 +94,24 @@
 <div id="mapping-results">
 {% include "mappings/_list.html" %}
 </div>
+
+<script>
+function reunifySource(source) {
+  if (!source || source === '*') {
+    if (!confirm('Re-run unification for ALL sources? This may take a while.')) return;
+  } else {
+    if (!confirm('Re-run unification for source "' + source + '"?')) return;
+  }
+  var fd = new FormData();
+  fd.append('source', source);
+  fetch('/admin/mappings/reunify', {method: 'POST', body: fd})
+    .then(r => r.text())
+    .then(html => {
+      var toast = document.createElement('div');
+      toast.innerHTML = html;
+      document.getElementById('reunify-toast').innerHTML = '';
+      document.getElementById('reunify-toast').appendChild(toast);
+    });
+}
+</script>
 {% endblock %}

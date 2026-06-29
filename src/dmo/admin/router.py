@@ -835,7 +835,8 @@ async def admin_mappings_create(request: Request, session: AsyncSession = Depend
         return HTMLResponse(f'<div class="toast error">{e}</div>')
 
     return HTMLResponse(
-        f'<div class="toast success">Mapping for "{source}/{source_place_type}" saved</div>'
+        f'<div class="toast success">Mapping for "{source}/{source_place_type}" saved. '
+        f'<a href="#" onclick="reunifySource(\'{source}\')">Re-run unification for {source}</a></div>'
     )
 
 
@@ -852,6 +853,12 @@ async def admin_mappings_update(
     if unified_category_id:
         unified_category_id = int(unified_category_id)
 
+    # Get source for re-unification link
+    row = await session.execute(
+        text("SELECT source FROM place_type_mappings WHERE id = :id"), {"id": mapping_id}
+    )
+    source = row.scalar()
+
     stmt = text(
         "UPDATE place_type_mappings SET unified_category_id = :cat_id, "
         "confidence = :conf, is_manual = :manual, notes = :notes WHERE id = :id"
@@ -867,7 +874,10 @@ async def admin_mappings_update(
         },
     )
     await session.commit()
-    return HTMLResponse('<div class="toast success">Mapping updated</div>')
+    return HTMLResponse(
+        f'<div class="toast success">Mapping updated. '
+        f'<a href="#" onclick="reunifySource(\'{source}\')">Re-run unification for {source}</a></div>'
+    )
 
 
 @router.delete("/mappings/{mapping_id}", response_class=HTMLResponse)
@@ -885,4 +895,75 @@ async def admin_mappings_delete(
     return HTMLResponse(
         f'<div class="toast success">Mapping deleted. '
         f'<a href="/admin/scripts/unify_place_types">Re-run unification for {source}</a></div>'
+    )
+
+
+@router.post("/mappings/reunify", response_class=HTMLResponse)
+async def admin_mappings_reunify(request: Request, session: AsyncSession = Depends(get_session)):
+    """Trigger unify_place_types for a specific source (M5 re-unification prompt)."""
+    form = await request.form()
+    source = form.get("source", "").strip()
+
+    if not source:
+        return HTMLResponse('<div class="toast error">Source is required</div>')
+
+    # Verify source exists in mappings
+    row = await session.execute(
+        text("SELECT COUNT(*) FROM place_type_mappings WHERE source = :source"),
+        {"source": source},
+    )
+    if not row.scalar():
+        return HTMLResponse(
+            f'<div class="toast error">No mappings found for source "{source}"</div>'
+        )
+
+    # Trigger the unify_place_types script for this source
+    script = get_script("unify_place_types")
+    if not script:
+        return HTMLResponse('<div class="toast error">unify_place_types script not found</div>')
+
+    run_id = await create_run("unify_place_types")
+
+    async def run_task():
+        try:
+            await update_run(
+                run_id, status="running", progress_pct=0, message=f"Re-unifying {source}..."
+            )
+            s = get_script("unify_place_types")
+            if not s:
+                await update_run(run_id, status="error", error="Script not found")
+                return
+
+            admin_settings = await load_settings()
+            llm = LLMClient.from_settings(admin_settings)
+            progress_cb = make_progress_callback(run_id)
+
+            result = await s.run(
+                {"source": source, "dry_run": False, "batch_size": 500},
+                session,
+                llm=llm,
+                progress_callback=progress_cb,
+            )
+            await update_run(
+                run_id,
+                status="done",
+                progress_pct=100,
+                message=result.message,
+                result={
+                    "success": result.success,
+                    "message": result.message,
+                    "affected_count": result.affected_count,
+                    "details": result.details[:100],
+                    "total_details": len(result.details),
+                },
+            )
+        except Exception as e:
+            logger.error("reunify_failed", source=source, error=str(e))
+            await update_run(run_id, status="error", error=str(e))
+
+    asyncio.create_task(run_task())
+
+    return HTMLResponse(
+        f'<div class="toast success">Re-unification started for "{source}". '
+        f'<a href="/admin/scripts/runs/{run_id}" target="_blank">View progress</a></div>'
     )
