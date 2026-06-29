@@ -66,8 +66,9 @@ async def list_categories(
     )
     top_count_result = await session.exec(top_count_stmt)
     top_counts: dict[int, int] = {}
-    for row in top_count_result.all():
-        top_counts[row[0]] = top_counts.get(row[0], 0) + 1
+    for cat_id in top_count_result.all():
+        if cat_id is not None:
+            top_counts[cat_id] = top_counts.get(cat_id, 0) + 1
 
     leaf_count_stmt = select(Entity.unified_category_id).where(
         col(Entity.is_active),
@@ -75,8 +76,9 @@ async def list_categories(
     )
     leaf_count_result = await session.exec(leaf_count_stmt)
     leaf_counts: dict[int, int] = {}
-    for row in leaf_count_result.all():
-        leaf_counts[row[0]] = leaf_counts.get(row[0], 0) + 1
+    for cat_id in leaf_count_result.all():
+        if cat_id is not None:
+            leaf_counts[cat_id] = leaf_counts.get(cat_id, 0) + 1
 
     result = []
     for top in top_categories:
