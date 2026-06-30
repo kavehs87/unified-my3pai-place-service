@@ -241,6 +241,54 @@ uv run python scripts/export-openapi.py
 npx redocly build-docs docs/openapi.json -o docs/index.html --config docs/redocly.yaml
 ```
 
+## Load Test Benchmarks
+
+Phase 1 results on staging VM (12 CPU / 6GB RAM / 4 Uvicorn workers / 60 DB connections / 1.2M entities). Run 2026-06-30.
+
+### Read-Only Scenarios
+
+| Scenario | VUs | Duration | Iterations | Failures | Avg Latency | P95 | Notes |
+|----------|-----|----------|------------|----------|-------------|-----|-------|
+| Read ramp | 50→800 | 15m | 129,702 | 14.17% | — | — | Breaking point ~400 VUs |
+| Read sustained | 200 | 5m | 18,723 | — | — | — | Warm cache |
+| Cold cache | 50 | 2m | 7,473 | 16.27% | 831ms | 9.12s | Cache flushed before run |
+| Stampede | 100 | 2m | 2,402 | 0% | 2.86s | 5.05s | SET NX lock working |
+| Timeout sat. | ramp→100 | — | 628 | 58.12% | 958ms | 1.07s | Deliberate 10s statement timeout |
+
+### Write Scenarios
+
+| Scenario | VUs | Duration | Iterations | Failures | Avg Latency | Notes |
+|----------|-----|----------|------------|----------|-------------|-------|
+| Bulk single source | 5 | 2m | — | — | — | 100 entities/batch |
+| Bulk multi source | 8 | 2m | — | — | — | Per-VU source isolation |
+| Write mixed | 2 | 5m | 5,124 | 0% | 117ms | Create/update/media/classification |
+
+### Mixed Workload
+
+| Scenario | Config | Iterations | Failures | Avg Latency | P95 | Notes |
+|----------|--------|------------|----------|-------------|-----|-------|
+| Mixed read+write | 200 read + 2 bulk | 20,195 | 21.17% | 5.98s | 16.01s | Cache thrashing from parallel writes |
+
+### Environment
+
+- Rate limiting: disabled (re-enabled for §18-23)
+- pg_stat_statements: enabled
+- Cache: Redis, 5min TTL (search), 30min TTL (detail), 60s TTL (open-status)
+- Backup taken before test: `backups/pre-phase2-loadtest/`
+
+### Running Tests
+
+```bash
+# Full suite (requires staging VM at 10.0.2.10)
+./loadtest/run_all.sh
+
+# Individual scenario
+k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000
+
+# Post-test analysis
+python scripts/analyze_queries.py
+```
+
 ## Plans
 
 See `plans/` for design documents, audit reports, and implementation plans.
