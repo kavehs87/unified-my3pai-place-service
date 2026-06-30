@@ -56,7 +56,7 @@ async def main():
         # Index usage stats
         result2 = await s.exec(
             text("""
-                SELECT schemaname, tablename, indexname, idx_scan, idx_tup_read, idx_tup_fetch
+                SELECT schemaname, relname AS tablename, indexrelname AS indexname, idx_scan, idx_tup_read, idx_tup_fetch
                 FROM pg_stat_user_indexes
                 ORDER BY idx_scan DESC;
             """)
