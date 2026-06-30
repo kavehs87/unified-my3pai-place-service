@@ -5,8 +5,8 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:8000';
 
 // Single shared target — all VUs hit this exact URL.
 // Use a known entity from known_entities.json (§9.1).
-const TARGET_SOURCE = __ENV.TARGET_SOURCE || 'osm';
-const TARGET_ID = __ENV.TARGET_ID || '26554597';
+const TARGET_SOURCE = __ENV.TARGET_SOURCE || 'tourpedia';
+const TARGET_ID = __ENV.TARGET_ID || '429403';
 
 export const options = {
   scenarios: {
