@@ -12,7 +12,7 @@ set -euo pipefail
 
 STAGING_HOST="10.0.2.10"
 BASE_URL="${BASE_URL:-http://${STAGING_HOST}:8000}"
-API_KEY="${API_KEY:-test-key}"
+API_KEY="${API_KEY:-mytestkey}"
 RESULTS_DIR="$(cd "$(dirname "$0")/.." && pwd)/results"
 LOADTEST_DIR="$(cd "$(dirname "$0")" && pwd)"
 REST_DURATION=120  # 2 min rest between scenarios
@@ -132,8 +132,8 @@ flush_cache
 run "Step 8: Stampede protection (100 VUs, same URL)" \
   k6 run "$LOADTEST_DIR/stampede.js" \
     --env BASE_URL="$BASE_URL" \
-    --env TARGET_SOURCE=osm \
-    --env TARGET_ID=26554597
+    --env TARGET_SOURCE=tourpedia \
+    --env TARGET_ID=429403
 
 rest
 
