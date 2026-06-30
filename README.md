@@ -269,12 +269,32 @@ Phase 1 results on staging VM (12 CPU / 6GB RAM / 4 Uvicorn workers / 60 DB conn
 |----------|--------|------------|----------|-------------|-----|-------|
 | Mixed read+write | 200 read + 2 bulk | 20,195 | 21.17% | 5.98s | 16.01s | Cache thrashing from parallel writes |
 
+### Rate Limiting
+
+| Scenario | Config | Iterations | Failures | Avg Latency | P95 | Notes |
+|----------|--------|------------|----------|-------------|-----|-------|
+| Single IP | 1 VU, 50 RPS | 1,393 | 12.70% | 329ms | 2.03s | Hit 10min maxDuration (70%) |
+| Multi IP | 20 VUs, 2min | 33,682 | 0% | 21ms | 47ms | All 200/429 as expected |
+
+### Spatial Stress
+
+| Scenario | VUs | Duration | Iterations | Requests | Failures | Avg Latency | P95 |
+|----------|-----|----------|------------|----------|----------|-------------|-----|
+| Dense bbox | 50 | 5m | 12,632 | 37,896 | 0% | 363ms | 649ms |
+
+### Soak Test (Stability)
+
+| Scenario | VUs | Duration | Iterations | Requests | Failures | Avg Latency | P95 |
+|----------|-----|----------|------------|----------|----------|-------------|-----|
+| Sustained | 50 | 30m | 124,181 | 124,181 | 16.29% | 625ms | 5.42s |
+
 ### Environment
 
-- Rate limiting: disabled (re-enabled for §18-23)
+- Rate limiting: disabled (re-enabled for rate limit tests)
 - pg_stat_statements: enabled
 - Cache: Redis, 5min TTL (search), 30min TTL (detail), 60s TTL (open-status)
 - Backup taken before test: `backups/pre-phase2-loadtest/`
+- Cleanup: 106,564 test entities deleted post-run
 
 ### Running Tests
 
