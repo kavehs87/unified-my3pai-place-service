@@ -14,6 +14,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_ROOT/backups}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 REMOTE_MODE=false
+TEST_MODE=false
 FORCE_MODE=false
 LIST_MODE=false
 RESTORE_FILE=""
@@ -42,12 +43,14 @@ die()     { error "$*"; exit 1; }
 while [[ $# -gt 0 ]]; do
   case $1 in
     --remote)  REMOTE_MODE=true; shift ;;
+    --test)    TEST_MODE=true; shift ;;
     --force)   FORCE_MODE=true; shift ;;
     --list)    LIST_MODE=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [--remote] [--force] [--list] [backup_file]"
+      echo "Usage: $0 [--remote] [--test] [--force] [--list] [backup_file]"
       echo ""
-      echo "  --remote      Restore to remote VM (requires STAGING_HOST)"
+      echo "  --remote      Restore to staging VM (requires STAGING_HOST)"
+      echo "  --test        Restore to test VM (10.0.1.8)"
       echo "  --force       Skip confirmation prompt"
       echo "  --list        List available backups"
       echo "  backup_file   Path to .dump file (default: latest backup)"
@@ -68,7 +71,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ─── Load env files ──────────────────────────────────────────────────────────
-if $REMOTE_MODE; then
+if $TEST_MODE; then
+  STAGING_HOST="${TEST_HOST:-10.0.1.8}"
+  STAGING_USER="${TEST_USER:-root}"
+  STAGING_PATH="${TEST_PATH:-/root/ups}"
+  REMOTE_MODE=true
+  info "Test VM mode: ${STAGING_USER}@${STAGING_HOST} (${STAGING_PATH})"
+elif $REMOTE_MODE; then
   if [[ -f "$PROJECT_ROOT/.env.staging" ]]; then
     info "Loading .env.staging"
     set -a
@@ -176,8 +185,10 @@ if ! $FORCE_MODE; then
   echo ""
   warn "WARNING: This will REPLACE the entire database!"
   echo ""
-  if $REMOTE_MODE; then
-    echo "  Target: ${STAGING_USER}@${STAGING_HOST} (${STAGING_PATH})"
+  if $TEST_MODE; then
+    echo "  Target: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
+  elif $REMOTE_MODE; then
+    echo "  Target: ${STAGING_USER}@${STAGING_HOST} (STAGING VM)"
   else
     echo "  Target: local Docker Compose ($COMPOSE_FILE)"
   fi
@@ -328,8 +339,10 @@ success "api service started"
 
 # ─── Done ────────────────────────────────────────────────────────────────────
 success "Restore complete!"
-if $REMOTE_MODE; then
-  info "Restored on: ${STAGING_USER}@${STAGING_HOST}"
+if $TEST_MODE; then
+  info "Restored on: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
+elif $REMOTE_MODE; then
+  info "Restored on: ${STAGING_USER}@${STAGING_HOST} (STAGING VM)"
 else
   info "Restored on: local Docker Compose"
 fi
