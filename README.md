@@ -421,7 +421,7 @@ Clients (e.g., Laravel backend) opt-in when summary search is needed. Default be
 |----------|--------|--------|
 | Mixed read+write (Phase 3 optimized) | — | ❌ Aborted (2 requests only) |
 
-**Known issue:** Rate limit tests return HTTP 500 instead of 429 — the rate limiter needs a code fix to return proper `429 Too Many Requests` responses.
+**Note:** Rate limiter now returns proper `429 TooManyRequests` (fixed `HTTPException` → `JSONResponse` in `BaseHTTPMiddleware`).
 
 ### Running Tests
 
@@ -548,7 +548,7 @@ When bulk writes run alongside read traffic, cache invalidation flushes all cach
 | Memory growth (soak) | Growing | Stable | Stable | <20% | ✅ PASS |
 | Stampede DB fetches | ~1 (100 VUs) | ~1 | Not re-tested | <3 | ✅ PASS |
 | 504 response shape | Valid JSON | Valid JSON | Valid JSON | Valid JSON | ✅ PASS |
-| Rate limit returns 429 | ❌ Returns 500 | ❌ Returns 500 | ❌ Returns 500 | 429 | ❌ FAIL |
+| Rate limit returns 429 | ❌ Returns 500 | ❌ Returns 500 | ✅ Returns 429 | 429 | ✅ PASS |
 
 ### Go/No-Go Decision
 
@@ -556,7 +556,7 @@ When bulk writes run alongside read traffic, cache invalidation flushes all cach
 
 The system passes all performance and reliability criteria on 4 CPU / 3G RAM with Phase 3 optimizations. The following items should be resolved before full production launch:
 
-1. **Rate limiter returns 500 instead of 429** — medium priority. The rate limiter is functional but returns wrong HTTP status code. Clients expecting 429 will see 500.
+1. ~~Rate limiter returns 500 instead of 429~~ — **FIXED**. Returns proper `429 TooManyRequests` with `{error, message, code, request_id}` body and `Retry-After` header.
 2. **Mixed read+write (Phase 3) untested** — medium priority. Cache thrashing impact with optimized config needs validation.
 3. **1 loadtest remnant entity** — low priority. Clean up `DELETE FROM entities WHERE source LIKE 'loadtest%';`
 4. **Detail endpoint entity pool stale** — low priority. `known_entities.json` has inactive entity references causing 100% failure in detail tests.
