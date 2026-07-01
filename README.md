@@ -311,6 +311,45 @@ Phase 2 baseline results on staging VM (12 CPU / 7.8GB RAM / 4 Uvicorn workers /
 - Backup taken before test: `backups/pre-phase2-loadtest/`
 - Cleanup: 106,564 test entities deleted post-run (Phase 2); 1 loadtest remnant entity remains on staging
 
+## Phase 2 Reduced — Resource Impact Assessment
+
+Run 2026-07-01 on staging VM (10.0.2.10) after reducing resources from **12 CPU / 6G RAM → 4 CPU / 3G RAM** to match the VM's actual hardware (4GB RAM, 4 cores). All Phase 3 optimizations remain active.
+
+### Read-Only Scenarios
+
+| Scenario | VUs | Duration | Requests | Failures | Avg Latency | P95 | Notes |
+|----------|-----|----------|----------|----------|-------------|-----|-------|
+| Warmup | 10 | 2m | 10,183 | 0% (0) | 18ms | 48ms | ✅ Zero failures |
+| Cold cache | 50 | 2m | 21,354 | 0.20% (42) | 181ms | 562ms | Cache flushed via `docker exec` |
+| Ramp | 50→800 | 15m | 236,955 | 4.12% (9,761) | 853ms | 2,833ms | Errors start ~130 VUs |
+| Peak | 800 | 5m | 158,604 | 99.36% (157,596) | 1,414ms | 4,824ms | System saturated — Redis OOM-killed (exit 137) |
+
+### Spatial Stress
+
+| Scenario | VUs | Duration | Requests | Failures | Avg Latency | P95 | Notes |
+|----------|-----|----------|----------|----------|-------------|-----|-------|
+| Dense bbox | 50 | 5m | 13,254 | 0.24% (32) | 1,109ms | 2,691ms | 10GB data received (large map tiles) |
+
+### Resource Reduction Impact
+
+| Test | Metric | Phase 2 Original (12 CPU, 6G, pre-opt) | Phase 2 Reduced (4 CPU, 3G, post-opt) | Change |
+|------|--------|----------------------------------------|---------------------------------------|--------|
+| Cold cache (50 VUs, 2m) | Failure rate | 16.27% | **0.20%** | ✅ 81x fewer failures (optimizations dominate) |
+| Cold cache (50 VUs, 2m) | P95 latency | 9,000ms | **562ms** | ✅ 16x faster |
+| Cold cache (50 VUs, 2m) | RPS | ~62 | **177** | ✅ 2.9x more throughput |
+| Spatial stress (50 VUs, 5m) | P95 latency | 649ms | **2,691ms** | ⚠️ 4.1x slower (CPU-bound) |
+| Spatial stress (50 VUs, 5m) | Failure rate | 0% | **0.24%** | ⚠️ Minor degradation |
+| Ramp test | Error-free VUs | ~58 | **~130** | ✅ 2.2x higher (optimizations dominate) |
+| Peak (800 VUs) | Failure rate | 100% | **99.36%** | ✅ Slightly better (but both catastrophic) |
+
+### Key Findings
+
+1. **Optimized code compensates for reduced resources:** Despite 67% CPU and 50% RAM reduction, cold-cache performance improved 16x because Phase 3 optimizations (indexes, pool tuning, fulltext flag) had a larger impact than the resource cut.
+2. **Spatial queries are CPU-bound:** P95 latency increased 4.1x (649ms → 2,691ms) under reduced resources, confirming spatial queries are the most sensitive to CPU availability.
+3. **Redis OOM at 800 VUs:** The 3G container limit was insufficient for Redis under peak load — Redis was OOM-killed (exit code 137). The `memory: 3G` limit in compose includes the API container; Redis needs its own limit.
+4. **Breaking point ~130 VUs:** The ramp test showed errors appearing around 130 VUs (vs ~58 VUs in original Phase 2). This is higher because Phase 3 optimizations offset the resource reduction.
+5. **Redis resilience:** Redis auto-recovered after restart with RDB persistence — zero data loss from the OOM kill.
+
 ## Phase 3 — Optimization Results
 
 Run 2026-06-30 on staging VM (10.0.2.10). Optimizations include PostgreSQL/Redis config tuning, new indexes, and the `fulltext` flag (code change to `search.py` + `router.py`).
