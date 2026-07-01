@@ -19,7 +19,7 @@ Provider-agnostic PostgreSQL + PostGIS data store with a REST API for tourism, P
 | tourpedia | 107,938 | 0 | 0 | `tourpedia_*` attributes, external links, photos |
 | swiss_dmo | 8,177 | 52,463 | 13,020 | Only source with classifications + media |
 | dzt | 76,386 | 0 | 0 | Empty attributes, poor data quality |
-| **Total** | **1,103,645** | **52,463** | **13,020** | |
+| **Total** | **1,203,022** | **52,463** | **13,020** | *as of 2026-07-01* |
 
 ### Architecture
 
@@ -84,6 +84,7 @@ GET  /map?bbox=&source=&place_type=&page_size=&cursor=
 GET  /{source}/{source_id}
 GET  /classifications/categories
 GET  /classifications?entity_id=&category=&value_code=&page_size=&cursor=
+GET  /unified-categories
 ```
 
 ### Write (requires `X-API-Key` header)
@@ -161,9 +162,12 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 | `RATE_LIMIT_MAX_REQUESTS` | `1000` | Max requests per window per IP |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window in seconds |
 | `TRUST_PROXY_HEADERS` | `true` | Use `X-Forwarded-For` for client IP |
-| `POOL_SIZE` | `10` | DB connection pool size per worker |
-| `QUERY_TIMEOUT_SECONDS` | `10.0` | Read query timeout |
+| `POOL_SIZE` | `10` | DB connection pool size per worker (staging: 20) |
+| `MAX_OVERFLOW` | `5` | DB max overflow per worker (staging: 10) |
+| `QUERY_TIMEOUT_SECONDS` | `10.0` | Read query timeout (staging: 30) |
 | `REQUEST_TIMEOUT_SECONDS` | `30.0` | HTTP request timeout |
+| `SLOW_REQUEST_THRESHOLD_MS` | `500.0` | Log warning for requests exceeding this |
+| `ALLOWED_ORIGINS` | `*` | CORS allowed origins |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## Deployment
@@ -171,12 +175,15 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 ### Staging
 
 ```bash
-# SSH tunnel to staging DB
-ssh -L 5432:db:5432 staging
+# SSH to staging VM
+ssh root@10.0.2.10
 
-# Deploy to staging VM (10.0.2.10)
-# Uses rsync + docker compose
-# See .opencode/skills/deploy-staging/ for full workflow
+# SSH tunnel to staging DB (from local machine)
+ssh -L 5432:localhost:5432 root@10.0.2.10
+
+# Deploy code changes (requires Docker rebuild — not volume-mounted)
+scp -r src/ root@10.0.2.10:/tmp/dmo-src/
+ssh root@10.0.2.10 "cp -r /tmp/dmo-src/* /root/ups/src/ && cd /root/ups && docker compose build api && docker compose up -d --force-recreate api"
 ```
 
 ### Production
@@ -190,7 +197,7 @@ Multi-stage Docker build with `uv` lockfile, Alembic migrations, Uvicorn (4 work
 ## Testing
 
 ```bash
-uv run pytest tests/          # 231 tests, 0 lint errors
+uv run pytest tests/          # 244 tests (25 files, parametrized), 0 lint errors
 uv run ruff check src/ tests/ # lint
 uv run ruff format src/ tests/ # format
 ```
@@ -243,25 +250,25 @@ npx redocly build-docs docs/openapi.json -o docs/index.html --config docs/redocl
 
 ## Load Test Benchmarks
 
-Phase 1 results on staging VM (12 CPU / 6GB RAM / 4 Uvicorn workers / 60 DB connections / 1.2M entities). Run 2026-06-30.
+Phase 2 baseline results on staging VM (12 CPU / 7.8GB RAM / 4 Uvicorn workers / POOL_SIZE=20, MAX_OVERFLOW=10 / 1.2M entities). Run 2026-06-30.
 
 ### Read-Only Scenarios
 
 | Scenario | VUs | Duration | Iterations | Failures | Avg Latency | P95 | Notes |
 |----------|-----|----------|------------|----------|-------------|-----|-------|
-| Read ramp | 50→800 | 15m | 129,702 | 14.17% | — | — | Breaking point ~400 VUs |
-| Read sustained | 200 | 5m | 18,723 | — | — | — | Warm cache |
-| Cold cache | 50 | 2m | 7,473 | 16.27% | 831ms | 9.12s | Cache flushed before run |
+| Read ramp | 50→800 | 15m | 129,702 | 14.17% | 1.61s | 11.08s | Breaking point ~58 VUs (EOF errors) |
+| Read sustained | 200 | 11m | 18,723 | 19.09% | 7.08s | 11.59s | Warm cache |
+| Cold cache | 50 | 2m | 7,473 | 16.27% | 730ms | 9.00s | Cache flushed before run |
 | Stampede | 100 | 2m | 2,402 | 0% | 2.86s | 5.05s | SET NX lock working |
-| Timeout sat. | ramp→100 | — | 628 | 58.12% | 958ms | 1.07s | Deliberate 10s statement timeout |
+| Timeout sat. | 100 | 2m | 2,402 | 0% | 2.81s | 5.00s | Deliberate 10s statement timeout |
 
 ### Write Scenarios
 
 | Scenario | VUs | Duration | Iterations | Failures | Avg Latency | Notes |
 |----------|-----|----------|------------|----------|-------------|-------|
-| Bulk single source | 5 | 2m | — | — | — | 100 entities/batch |
-| Bulk multi source | 8 | 2m | — | — | — | Per-VU source isolation |
-| Write mixed | 2 | 5m | 5,124 | 0% | 117ms | Create/update/media/classification |
+| Bulk single source | 5 | 2m | 628 | 58.12% | 454ms | 100 entities/batch, advisory lock contention |
+| Bulk multi source | 8 | 2m | 910 | 0% | 556ms | Per-VU source isolation |
+| Write mixed | 2 | 5m | 5,124 | 0% | 16ms | Create/update/media/classification |
 
 ### Mixed Workload
 
@@ -287,8 +294,9 @@ Phase 1 results on staging VM (12 CPU / 6GB RAM / 4 Uvicorn workers / 60 DB conn
 
 | Scenario | VUs | Duration | Iterations | Requests | Failures | Avg Latency | P95 |
 |----------|-----|----------|------------|----------|----------|-------------|-----|
-| Sustained (Phase 2) | 50 | 30m | 124,181 | 124,181 | 16.29% | 625ms | 5.42s |
+| Sustained (Phase 2) | 50 | 30m | 124,181 | 124,181 | 16.29% | 625ms | 5.43s |
 | Sustained (Phase 3) | 10 | 30m | 33,752 | 101,256 | 0.00% | 10ms | 10ms |
+| Sustained (Phase 3, 50 VU) | 50 | 120m | running | — | — | — | In progress as of 2026-07-01 |
 
 ### Environment
 
@@ -300,7 +308,7 @@ Phase 1 results on staging VM (12 CPU / 6GB RAM / 4 Uvicorn workers / 60 DB conn
 
 ## Phase 3 — Optimization Results
 
-Run 2026-06-30 on staging VM (10.0.2.10). All optimizations are config/index changes only (zero code modifications).
+Run 2026-06-30 on staging VM (10.0.2.10). Optimizations include PostgreSQL/Redis config tuning, new indexes, and the `fulltext` flag (code change to `search.py` + `router.py`).
 
 ### Optimizations Applied
 
@@ -372,15 +380,13 @@ k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000
 python scripts/analyze_queries.py
 ```
 
+## OpenAPI Docs (Stale)
+
+⚠️ `docs/openapi.json` and `docs/index.html` need regeneration — `fulltext` parameter was added to `/search`.
+
 ```bash
-# Full suite (requires staging VM at 10.0.2.10)
-./loadtest/run_all.sh
-
-# Individual scenario
-k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000
-
-# Post-test analysis
-python scripts/analyze_queries.py
+uv run python scripts/export-openapi.py
+npx redocly build-docs docs/openapi.json -o docs/index.html --config docs/redocly.yaml
 ```
 
 ## Plans
