@@ -22,7 +22,7 @@ services:
       resources:
         limits:
           cpus: "12"
-          memory: 2G
+          memory: 3G
 
   db:
     image: postgis/postgis:16-3.4
