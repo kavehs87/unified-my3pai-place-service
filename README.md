@@ -320,15 +320,27 @@ Run 2026-06-30 on staging VM (10.0.2.10). All optimizations are config/index cha
 
 ### Before/After Comparison
 
-| Test | Metric | Phase 2 Baseline | Phase 3 Optimized | Change |
-|------|--------|-----------------|-------------------|--------|
-| Cold Cache (50 VUs, 2m) | Failure rate | 16.27% | **0.22%** | ✅ 98.6% reduction |
-| Cold Cache (50 VUs, 2m) | P95 latency | 9.12s | 9.67s | More queries complete |
-| Spatial Stress (50 VUs, 5m) | P95 latency | 649ms | **986ms** | Under concurrent load |
-| Spatial Stress (50 VUs, 5m) | Failure rate | 0% | **0%** | ✅ Maintained |
-| Mixed Read+Write (1 VU, 10m) | Failure rate | N/A | **0%** | ✅ New test |
-| Soak (10 VUs, 30m) | Failure rate | 16.29% | **0.00%** | ✅ 101K requests, 0 failures |
-| Soak (10 VUs, 30m) | P95 latency | 5.42s | **0.01s** | ✅ Warm cache stable |
+| Test | Metric | Phase 2 Baseline | Phase 3 Optimized | Phase 3 + fulltext flag | Change |
+|------|--------|-----------------|-------------------|------------------------|--------|
+| Cold Cache (50 VUs, 2m) | Failure rate | 16.27% | 0.22% | **0.00%** | ✅ Eliminated |
+| Cold Cache (50 VUs, 2m) | P95 latency | 9.12s | 9.67s | **86.86ms** | ✅ 136x faster |
+| Cold Cache (50 VUs, 2m) | RPS | 29.6 | — | **398.1** | ✅ 13.4x more |
+| Spatial Stress (50 VUs, 5m) | P95 latency | 649ms | **986ms** | — | Under concurrent load |
+| Spatial Stress (50 VUs, 5m) | Failure rate | 0% | **0%** | — | ✅ Maintained |
+| Mixed Read+Write (1 VU, 10m) | Failure rate | N/A | **0%** | — | ✅ New test |
+| Soak (10 VUs, 30m) | Failure rate | 16.29% | **0.00%** | — | ✅ 101K requests, 0 failures |
+| Soak (10 VUs, 30m) | P95 latency | 5.42s | **0.01s** | — | ✅ Warm cache stable |
+
+### Fulltext Flag
+
+`?fulltext=true` includes `summary` field in trigram search (default: name only).
+
+| Query | Cold Cache | Use Case |
+|-------|-----------|----------|
+| `?q=Interlaken` | 47ms | Default — fast name search |
+| `?q=Interlaken&fulltext=true` | 2.8s | Opt-in — includes summary text |
+
+Clients (e.g., Laravel backend) opt-in when summary search is needed. Default behavior prioritizes fast cold-cache responses.
 
 ### Indexes Created
 
@@ -341,7 +353,9 @@ Run 2026-06-30 on staging VM (10.0.2.10). All optimizations are config/index cha
 
 ### Root Cause Analysis
 
-**Cold-cache failures (16.27% → 0.22%):** Primary cause was insufficient DB pool (10 connections for 50 VUs) and short query timeout (10s). Doubling pool size and tripling timeout eliminated connection exhaustion. New partial indexes reduce scan volume for active entities.
+**Cold-cache failures (16.27% → 0.00%):** Primary cause was insufficient DB pool (10 connections for 50 VUs), short query timeout (10s), and summary trigram scan (79,744 row matches for "Interlaken"). Doubling pool size, tripling timeout, and introducing optional `fulltext` flag eliminated all cold-cache failures.
+
+**Summary trigram impact:** Default search now queries `name` only (47ms cold cache). Clients opt-in to `summary` search via `?fulltext=true` (2.8s). Summary trigram matches 79,744 rows for "Interlaken" → bitmap heap scan reads 64,680 blocks → 2.8s single query.
 
 **Spatial P95 increase (649ms → 986ms):** Spatial queries hit the larger covering index under concurrent load. Still within acceptable range (<1s P95, 0% failures).
 
