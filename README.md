@@ -259,36 +259,41 @@ Phase 2 baseline results on staging VM (12 CPU / 7.8GB RAM / 4 Uvicorn workers /
 | Read ramp | 50→800 | 15m | 129,702 | 14.17% | 1.61s | 11.08s | Breaking point ~58 VUs (EOF errors) |
 | Read sustained | 200 | 11m | 18,723 | 19.09% | 7.08s | 11.59s | Warm cache |
 | Cold cache | 50 | 2m | 7,473 | 16.27% | 730ms | 9.00s | Cache flushed before run |
-| Stampede | 100 | 2m | 2,402 | 0% | 2.86s | 5.05s | SET NX lock working |
-| Timeout sat. | 100 | 2m | 2,402 | 0% | 2.81s | 5.00s | Deliberate 10s statement timeout |
+| Stampede (Phase 2) | 100 | 2m | 2,402 | 0% | 2.86s | 5.05s | SET NX lock working |
+| Timeout sat. (Phase 2) | 100 | 2m | 2,402 | 0% | 2.81s | 5.00s | Deliberate 10s statement timeout |
+| Stampede (Phase 3) | — | — | — | — | — | — | ❌ Not run — `stampede.js` missing |
+| Timeout sat. (Phase 3) | — | — | — | — | — | — | ❌ Not run — `timeout_saturation.js` missing |
 
 ### Write Scenarios
 
 | Scenario | VUs | Duration | Iterations | Failures | Avg Latency | Notes |
 |----------|-----|----------|------------|----------|-------------|-------|
-| Bulk single source | 5 | 2m | 628 | 58.12% | 454ms | 100 entities/batch, advisory lock contention |
-| Bulk multi source | 8 | 2m | 910 | 0% | 556ms | Per-VU source isolation |
-| Write mixed | 2 | 5m | 5,124 | 0% | 16ms | Create/update/media/classification |
+| Bulk single source (Phase 2) | 5 | 2m | 628 | 58.12% | 454ms | 100 entities/batch, advisory lock contention |
+| Bulk multi source (Phase 2) | 8 | 2m | 910 | 0% | 556ms | Per-VU source isolation |
+| Write mixed (Phase 2) | 2 | 5m | 5,124 | 0% | 16ms | Create/update/media/classification |
+| Bulk single/multi source (Phase 3) | — | — | — | — | — | ❌ Not run — `bulk_upsert.js` missing |
 
 ### Mixed Workload
 
 | Scenario | Config | Iterations | Failures | Avg Latency | P95 | Notes |
 |----------|--------|------------|----------|-------------|-----|-------|
-| Mixed read+write | 200 read + 2 bulk | 20,195 | 21.17% | 5.98s | 16.01s | Cache thrashing from parallel writes |
+| Mixed read+write (Phase 2) | 200 read + 2 bulk | 20,195 | 21.17% | 5.98s | 16.01s | Cache thrashing from parallel writes |
+| Mixed read+write (Phase 3) | — | 2 | 0% | — | — | ❌ Incomplete — test aborted after 1 iteration |
 
 ### Rate Limiting
 
 | Scenario | Config | Requests | 200 OK | 429 Limited | Avg Latency | P95 | Notes |
 |----------|--------|----------|--------|-------------|-------------|-----|-------|
-| Single IP (50 RPS) | 1 VU, 50 RPS, 2000 iters | 2,000 | 1,000 | 1,000 | 4.4ms | 6.75ms | 429s start at request 1001 (~20s) |
-| Burst | 10 VUs, 5s | 7,645 | 1,002 | 6,643 | 6.45ms | 13.58ms | Remaining window capacity used |
-| Multi IP | 20 VUs, 2min | 33,682 | ~20,000 | ~13,682 | 21ms | 47ms | Per-IP isolation working |
+| Single IP (50 RPS) | 1 VU, 50 RPS, 2000 iters | 2,001 | 1,000 | 1,001 (500) | 4.4ms | 6.75ms | Returns 500 not 429 — starts at request 1001 (~20s) |
+| Burst | 10 VUs, 5s | 7,646 | 1,002 | 6,643 (500) | 6.45ms | 13.58ms | Returns 500 not 429 |
+| Multi IP | 20 VUs, 2min | — | — | — | — | — | ❌ Not run — `ratelimit_multiip.js` missing |
 
 ### Spatial Stress
 
 | Scenario | VUs | Duration | Iterations | Requests | Failures | Avg Latency | P95 |
 |----------|-----|----------|------------|----------|----------|-------------|-----|
-| Dense bbox | 50 | 5m | 12,632 | 37,896 | 0% | 363ms | 649ms |
+| Dense bbox (Phase 2) | 50 | 5m | 12,632 | 37,896 | 0% | 363ms | 649ms |
+| Dense bbox (Phase 3) | — | — | 10,895 | 32,683 | 0% | — | 986ms |
 
 ### Soak Test (Stability)
 
@@ -296,7 +301,7 @@ Phase 2 baseline results on staging VM (12 CPU / 7.8GB RAM / 4 Uvicorn workers /
 |----------|-----|----------|------------|----------|----------|-------------|-----|
 | Sustained (Phase 2) | 50 | 30m | 124,181 | 124,181 | 16.29% | 625ms | 5.43s |
 | Sustained (Phase 3) | 10 | 30m | 33,752 | 101,256 | 0.00% | 10ms | 10ms |
-| Sustained (Phase 3, 50 VU) | 50 | 120m | running | — | — | — | In progress as of 2026-07-01 |
+| Sustained (Phase 3, 50 VU) | 50 | 120m | 685,348 | 2,056,044 | 0.00% | 3.88ms | 7.32ms | ✅ Completed 2026-07-01 |
 
 ### Environment
 
@@ -304,7 +309,7 @@ Phase 2 baseline results on staging VM (12 CPU / 7.8GB RAM / 4 Uvicorn workers /
 - pg_stat_statements: enabled
 - Cache: Redis, 5min TTL (search), 30min TTL (detail), 60s TTL (open-status)
 - Backup taken before test: `backups/pre-phase2-loadtest/`
-- Cleanup: 106,564 test entities deleted post-run
+- Cleanup: 106,564 test entities deleted post-run (Phase 2); 1 loadtest remnant entity remains on staging
 
 ## Phase 3 — Optimization Results
 
@@ -366,6 +371,25 @@ Clients (e.g., Laravel backend) opt-in when summary search is needed. Default be
 **Summary trigram impact:** Default search now queries `name` only (47ms cold cache). Clients opt-in to `summary` search via `?fulltext=true` (2.8s). Summary trigram matches 79,744 rows for "Interlaken" → bitmap heap scan reads 64,680 blocks → 2.8s single query.
 
 **Spatial P95 increase (649ms → 986ms):** Spatial queries hit the larger covering index under concurrent load. Still within acceptable range (<1s P95, 0% failures).
+
+### Test Execution Status
+
+**Completed:** Read ramp, Read sustained, Cold cache (P2+P3), Spatial stress (P2+P3), Rate limit single+burst, Soak (30m + 120m), Write bulk (P2), Write mixed (P2), Stampede (P2), Timeout sat. (P2), Mixed read+write (P2).
+
+**Remaining:**
+
+| Scenario | Script | Status |
+|----------|--------|--------|
+| Bulk upsert (single/multi source) | `bulk_upsert.js` | ❌ Script missing |
+| Stampede protection | `stampede.js` | ❌ Script missing |
+| Timeout saturation | `timeout_saturation.js` | ❌ Script missing |
+| Rate limit multi-IP | `ratelimit_multiip.js` | ❌ Script missing |
+| Mixed read+write (Phase 3) | — | ❌ Aborted (2 requests only) |
+| Full suite orchestrator | `run_all.sh` | ❌ Script missing |
+| Cleanup SQL | `cleanup.sql` | ❌ Script missing |
+| Write entity pool | `write_entities.json` | ❌ Data file missing |
+
+**Known issue:** Rate limit tests return HTTP 500 instead of 429 — the rate limiter needs a code fix to return proper `429 Too Many Requests` responses.
 
 ### Running Tests
 
