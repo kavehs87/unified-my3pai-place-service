@@ -572,13 +572,13 @@ The system passes all performance and reliability criteria on 4 CPU / 3G RAM wit
 | No read replica | All reads hit primary DB | Add PgBouncer + read replica if scaling beyond 200 VUs |
 | Redis eviction under peak | Cache misses increase at 800 VUs | Acceptable — system stays stable, latency degrades gracefully |
 
-## OpenAPI Docs (Stale)
+## OpenAPI Docs
 
-⚠️ `docs/openapi.json` and `docs/index.html` need regeneration — `fulltext` parameter was added to `/search`.
+`docs/openapi.json` and `docs/index.html` are auto-generated from the running API.
 
 ```bash
 uv run python scripts/export-openapi.py
-npx redocly build-docs docs/openapi.json -o docs/index.html --config docs/redocly.yaml
+npx @redocly/cli build-docs docs/openapi.json -o docs/index.html --config docs/redocly.yaml
 ```
 
 ## Plans
