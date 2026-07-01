@@ -42,8 +42,15 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -53,3 +60,4 @@ services:
 volumes:
   pgdata:
   admin_settings:
+  redis_data:
