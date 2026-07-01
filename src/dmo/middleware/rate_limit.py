@@ -2,11 +2,26 @@ import time
 import uuid
 
 import redis.asyncio as redis
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from dmo.config import settings
 from dmo.services.cache import get_cache
+
+
+def _rate_limit_response(request: Request) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", "")
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": "TooManyRequests",
+            "message": "Rate limit exceeded. Try again later.",
+            "code": 429,
+            "request_id": request_id,
+        },
+        headers={"Retry-After": str(settings.rate_limit_window_seconds)},
+    )
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
@@ -40,11 +55,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             current_requests = results[1]
 
             if current_requests >= settings.rate_limit_max_requests:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Rate limit exceeded. Try again later.",
-                    headers={"Retry-After": str(settings.rate_limit_window_seconds)},
-                )
+                return _rate_limit_response(request)
 
             pipeline = client.pipeline()
             member = f"{now}:{uuid.uuid4()}"
@@ -59,5 +70,6 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
             )
             return response
 
-        except redis.ConnectionError:
+        except redis.RedisError:
+            # Any Redis failure (connection, timeout, etc.) — fail open
             return await call_next(request)
