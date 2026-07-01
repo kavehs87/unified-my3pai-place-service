@@ -322,7 +322,7 @@ Run 2026-07-01 on staging VM (10.0.2.10) after reducing resources from **12 CPU 
 | Warmup | 10 | 2m | 10,183 | 0% (0) | 18ms | 48ms | ✅ Zero failures |
 | Cold cache | 50 | 2m | 21,354 | 0.20% (42) | 181ms | 562ms | Cache flushed via `docker exec` |
 | Ramp | 50→800 | 15m | 236,955 | 4.12% (9,761) | 853ms | 2,833ms | Errors start ~130 VUs |
-| Peak | 800 | 5m | 158,604 | 99.36% (157,596) | 1,414ms | 4,824ms | System saturated — Redis OOM-killed (exit 137) |
+| Peak | 800 | 5m | 124,530 | 0.52% (652) | 1,830ms | 5,550ms | ✅ Redis stable (1GB limit, LRU eviction) — failures from DB pool exhaustion |
 
 ### Spatial Stress
 
@@ -346,7 +346,7 @@ Run 2026-07-01 on staging VM (10.0.2.10) after reducing resources from **12 CPU 
 
 1. **Optimized code compensates for reduced resources:** Despite 67% CPU and 50% RAM reduction, cold-cache performance improved 16x because Phase 3 optimizations (indexes, pool tuning, fulltext flag) had a larger impact than the resource cut.
 2. **Spatial queries are CPU-bound:** P95 latency increased 4.1x (649ms → 2,691ms) under reduced resources, confirming spatial queries are the most sensitive to CPU availability.
-3. **Redis OOM at 800 VUs:** The 3G container limit was insufficient for Redis under peak load — Redis was OOM-killed (exit code 137). The `memory: 3G` limit in compose includes the API container; Redis needs its own limit.
+3. **Redis stability fixed:** Added `maxmemory 1gb` + `allkeys-lru` eviction policy. Peak test at 800 VUs improved from 99.36% → 0.52% failures. Remaining failures are from DB pool exhaustion (20 connections for 800 VUs).
 4. **Breaking point ~130 VUs:** The ramp test showed errors appearing around 130 VUs (vs ~58 VUs in original Phase 2). This is higher because Phase 3 optimizations offset the resource reduction.
 5. **Redis resilience:** Redis auto-recovered after restart with RDB persistence — zero data loss from the OOM kill.
 
