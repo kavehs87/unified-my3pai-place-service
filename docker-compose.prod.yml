@@ -21,7 +21,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "12"
+          cpus: "4"
           memory: 3G
 
   db:
