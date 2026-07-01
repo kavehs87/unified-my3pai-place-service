@@ -22,7 +22,7 @@ services:
       resources:
         limits:
           cpus: "12"
-          memory: 6G
+          memory: 2G
 
   db:
     image: postgis/postgis:16-3.4
@@ -50,21 +50,6 @@ services:
       timeout: 3s
       retries: 5
 
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    ports:
-      - "8888:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@localhost}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-changeme}
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
   pgdata:
-  pgadmin_data:
   admin_settings:
