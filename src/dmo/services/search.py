@@ -14,10 +14,12 @@ async def search(
     country: str | None = None,
     page_size: int = 20,
     cursor: str | None = None,
+    fulltext: bool = False,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
     """Full-text search with filters and cursor pagination.
 
-    Uses pg_trgm for text matching on name and summary fields.
+    Uses pg_trgm for text matching on name field by default.
+    When fulltext=True, also searches summary field (slower on cold cache).
     Auto-detects unified_category level (top/leaf) for filtering.
     Returns (items, total, next_cursor, has_more).
     """
@@ -44,7 +46,10 @@ async def search(
             where_parts.append("entities.unified_subcategory = :uscat")
             params["uscat"] = unified_category
     if q:
-        where_parts.append("(entities.name % :query OR entities.summary % :query)")
+        if fulltext:
+            where_parts.append("(entities.name % :query OR entities.summary % :query)")
+        else:
+            where_parts.append("entities.name % :query")
         params["query"] = q
 
     cursor_filter = ""

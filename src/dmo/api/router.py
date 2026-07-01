@@ -84,6 +84,7 @@ async def search_endpoint(
     country: str | None = Query(None, max_length=10),
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
+    fulltext: bool = Query(False, description="Include summary field in text search (slower)"),
 ):
     search_params = {
         "q": q,
@@ -93,6 +94,7 @@ async def search_endpoint(
         "country": country,
         "page_size": page_size,
         "cursor": cursor,
+        "fulltext": fulltext,
     }
 
     async def _fetch_search() -> str:
@@ -105,6 +107,7 @@ async def search_endpoint(
             country,
             cursor=cursor,
             page_size=page_size,
+            fulltext=fulltext,
         )
         result = CursorPaginatedResponse[EntityListItem](
             results=items, total=total, next_cursor=next_cursor, has_more=has_more

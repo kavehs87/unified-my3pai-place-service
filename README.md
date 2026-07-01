@@ -78,7 +78,7 @@ uv run ruff format src/ tests/
 ### Read (public)
 
 ```
-GET  /search?q=&source=&place_type=&country=&page_size=&cursor=
+GET  /search?q=&source=&place_type=&country=&page_size=&cursor=&fulltext=
 GET  /nearby?lat=&lon=&radius_km=&source=&place_type=&page_size=&cursor=
 GET  /map?bbox=&source=&place_type=&page_size=&cursor=
 GET  /{source}/{source_id}

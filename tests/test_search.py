@@ -126,3 +126,45 @@ async def test_search_cursor_pagination(client: AsyncClient, session: AsyncSessi
     data2 = resp2.json()
     assert len(data2["results"]) == 2
     assert data1["results"][-1]["id"] != data2["results"][0]["id"]
+
+
+@pytest.mark.asyncio
+async def test_search_fulltext_flag(client: AsyncClient, session: AsyncSession):
+    """Test that fulltext flag enables summary search.
+
+    Default (fulltext=False) searches name only.
+    fulltext=True searches name + summary.
+    """
+    entity_name = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="ft-1",
+        name="Mountain Lodge",
+        place_type="hotel",
+        country="CH",
+    )
+    entity_summary = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="ft-2",
+        name="Alpine Hotel",
+        summary="Cozy hotel near Mountain Lodge in the Alps",
+        place_type="hotel",
+        country="CH",
+    )
+    session.add(entity_name)
+    session.add(entity_summary)
+    await session.commit()
+
+    # Default: name-only search finds "Mountain Lodge"
+    resp = await client.get("/search?q=Mountain+Lodge")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["results"][0]["name"] == "Mountain Lodge"
+
+    # fulltext=True: summary search finds "Alpine Hotel" (summary mentions "Mountain Lodge")
+    resp2 = await client.get("/search?q=Mountain+Lodge&fulltext=true")
+    assert resp2.status_code == 200
+    data2 = resp2.json()
+    assert data2["total"] == 2

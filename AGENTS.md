@@ -187,7 +187,7 @@ src/dmo/
 
 ### Read (public)
 ```
-GET  /search?q=&source=&place_type=&country=&unified_category=&page_size=&cursor=
+GET  /search?q=&source=&place_type=&country=&unified_category=&page_size=&cursor=&fulltext=
 GET  /nearby?lat=&lon=&radius_km=&source=&place_type=&unified_category=&page_size=&cursor=
 GET  /map?bbox=&source=&place_type=&unified_category=&page_size=&cursor=
 GET  /{source}/{source_id}
@@ -305,6 +305,7 @@ See `plans/unified-dmo-schema.md` for complete schema, field mappings, design de
 - **Pydantic V3 compatibility**: No `strip_whitespace` in `Field()`. All string stripping via `model_validator(mode='before')`.
 - **Unified category filtering**: `unified_category` query param auto-detects top-level vs leaf via `get_category_level()`. Top-level slugs filter `unified_category` column; leaf slugs filter `unified_subcategory` column.
 - **Slug immutability**: `unified_categories.slug` cannot be renamed after creation. Admin UI disables the slug field on edit; backend PUT endpoint excludes slug from the UPDATE statement entirely.
+- **Search `fulltext` flag**: `?fulltext=true` includes `summary` field in trigram search (slower cold cache: 2.8s vs 47ms). Default (`fulltext=false` or omitted) searches `name` only. Clients (e.g., Laravel backend) opt-in when summary search is needed.
 
 ## Common Pitfalls
 
