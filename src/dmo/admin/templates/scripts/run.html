@@ -41,4 +41,121 @@
 </div>
 
 <div id="run-status"></div>
+
+<script>
+document.getElementById('script-form').addEventListener('htmx:after-on-load', function(evt) {
+  try {
+    const response = JSON.parse(evt.detail.xhr.responseText);
+    if (response.run_id) {
+      startPolling(response.run_id, '{{ script.name }}');
+    }
+  } catch (e) {
+    console.error('Failed to parse run response:', e);
+  }
+});
+
+function startPolling(runId, scriptName) {
+  const statusDiv = document.getElementById('run-status');
+  let pollInterval = null;
+  
+  function renderStatus(run) {
+    const statusClass = run.status === 'done' ? 'success' : 
+                       run.status === 'error' ? 'error' : 
+                       run.status === 'running' ? 'info' : 'warning';
+    
+    let progressHtml = '';
+    if (run.status === 'running' || run.status === 'queued') {
+      progressHtml = `
+        <div style="margin-top:1rem;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:0.25rem;">
+            <span style="font-size:0.85rem;color:var(--text-muted);">Progress</span>
+            <span style="font-size:0.85rem;font-weight:600;">${Math.round(run.progress_pct)}%</span>
+          </div>
+          <div style="background:var(--gray-200);border-radius:999px;height:8px;overflow:hidden;">
+            <div style="background:var(--blue-500);height:100%;width:${run.progress_pct}%;transition:width 0.3s ease;border-radius:999px;"></div>
+          </div>
+        </div>
+      `;
+    }
+    
+    let resultHtml = '';
+    if (run.status === 'done' && run.result) {
+      resultHtml = `
+        <div style="margin-top:1rem;padding:0.75rem;background:var(--gray-50);border-radius:0.5rem;border:1px solid var(--gray-200);">
+          <div style="font-weight:600;margin-bottom:0.5rem;">Result</div>
+          <div style="font-size:0.9rem;color:var(--text-muted);">
+            ${run.result.affected_count || 0} entities affected
+          </div>
+          ${run.result.message ? `<div style="font-size:0.85rem;color:var(--text-secondary);margin-top:0.25rem;">${run.result.message}</div>` : ''}
+        </div>
+      `;
+    }
+    
+    statusDiv.innerHTML = `
+      <div class="card" style="margin-top:1rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <h3 style="margin:0;font-size:1rem;">${scriptName}</h3>
+            <span class="badge badge-${statusClass}">${run.status}</span>
+          </div>
+          <span style="font-size:0.8rem;color:var(--text-muted);font-family:monospace;">${runId.slice(0, 8)}...</span>
+        </div>
+        
+        ${progressHtml}
+        
+        <div style="margin-top:0.75rem;padding:0.5rem;background:var(--gray-50);border-radius:0.375rem;font-size:0.85rem;color:var(--text-secondary);">
+          ${run.message || ''}
+        </div>
+        
+        ${resultHtml}
+        
+        ${run.status === 'error' && run.error ? `
+          <div style="margin-top:0.75rem;padding:0.5rem;background:var(--red-50);border:1px solid var(--red-200);border-radius:0.375rem;font-size:0.85rem;color:var(--red-700);">
+            ${run.error}
+          </div>
+        ` : ''}
+        
+        ${run.finished_at ? `
+          <div style="margin-top:0.75rem;font-size:0.75rem;color:var(--text-muted);text-align:right;">
+            Finished: ${new Date(run.finished_at).toLocaleString()}
+          </div>
+        ` : ''}
+      </div>
+    `;
+    
+    if (run.status === 'done' || run.status === 'error') {
+      clearInterval(pollInterval);
+    }
+  }
+  
+  function poll() {
+    fetch(`/admin/scripts/runs/${runId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status) {
+          renderStatus(data);
+        }
+      })
+      .catch(err => {
+        console.error('Polling error:', err);
+      });
+  }
+  
+  // Initial render
+  poll();
+  
+  // Poll every 2 seconds
+  pollInterval = setInterval(poll, 2000);
+  
+  // Show initial status
+  statusDiv.innerHTML = `
+    <div class="card" style="margin-top:1rem;">
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <span class="spinner" style="display:inline-block;"></span>
+        <span>Starting script...</span>
+      </div>
+    </div>
+  `;
+}
+</script>
 {% endblock %}
