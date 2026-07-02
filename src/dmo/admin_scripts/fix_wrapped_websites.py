@@ -19,7 +19,7 @@ class FixWrappedWebsites(AdminScript):
         batch_size = int(params.get("batch_size", 1000))
 
         count_result = await db.execute(
-            text("SELECT COUNT(*) FROM entities WHERE is_active = true AND website LIKE '[%]%")
+            text("SELECT COUNT(*) FROM entities WHERE is_active = true AND website LIKE '[%]%')")
         )
         total = count_result.scalar() or 0
 
