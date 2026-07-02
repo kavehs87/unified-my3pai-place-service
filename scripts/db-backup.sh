@@ -11,7 +11,7 @@ set -euo pipefail
 # ─── Defaults ────────────────────────────────────────────────────────────────
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_ROOT/backups}"
-BACKUP_RETENTION="${BACKUP_RETENTION:-7}"
+BACKUP_RETENTION="${BACKUP_RETENTION:-999999}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 REMOTE_MODE=false
 
