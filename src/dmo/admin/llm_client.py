@@ -57,7 +57,13 @@ class LLMClient:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
-                return data["choices"][0]["message"]["content"]
+                msg = data["choices"][0]["message"]
+                content = msg.get("content", "").strip()
+                if not content.startswith("{") and msg.get("reasoning_content"):
+                    content = msg.get("reasoning_content", "").strip()
+                if not content:
+                    raise LLMError("Empty response from LLM")
+                return content
         except httpx.HTTPStatusError as e:
             raise LLMError(f"LLM API returned {e.response.status_code}: {e.response.text[:200]}")
         except httpx.RequestError as e:
