@@ -526,6 +526,21 @@ async def admin_script_status(run_id: str):
     )
 
 
+@router.post("/scripts/{script_name}/stop")
+async def admin_script_stop(script_name: str):
+
+    stop_file = ".stop"
+    with open(stop_file, "w") as f:
+        f.write("stop")
+    logger.info("stop_signal_created", script=script_name, stop_file=stop_file)
+    return JSONResponse(
+        {
+            "message": f"Stop signal sent for {script_name}",
+            "stop_file": stop_file,
+        }
+    )
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def admin_settings_page(request: Request):
     settings = await load_settings()

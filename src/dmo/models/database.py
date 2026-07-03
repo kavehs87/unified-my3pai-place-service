@@ -6,6 +6,7 @@ from geoalchemy2.types import Geography, Geometry
 from pydantic import ConfigDict
 from sqlalchemy import (
     ARRAY,
+    BigInteger,
     TIMESTAMP,
     Boolean,
     Column,
@@ -278,4 +279,30 @@ class PlaceTypeMapping(SQLModel, table=True):
         UniqueConstraint("source", "source_place_type", name="uq_source_place_type"),
         Index("idx_ptm_category", "unified_category_id"),
         Index("idx_ptm_source", "source"),
+    )
+
+
+class My3paiRephrased(SQLModel, table=True):
+    __tablename__ = "my3pai_rephrased"
+
+    id: int | None = Field(
+        default=None, sa_column=Column("id", BigInteger, primary_key=True, autoincrement=True)
+    )
+    source: str = Field(sa_column=Column(String(100), nullable=False))
+    source_id: str = Field(sa_column=Column(String(500), nullable=False))
+    entity_id: UUID = Field(
+        sa_column=Column(
+            PG_UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), nullable=False
+        )
+    )
+    rephrased_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            TIMESTAMP(timezone=True), server_default=text("NOW()")
+        ),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source", "source_id", name="uq_my3pai_rephrased_source_source_id"),
+        Index("idx_rephrased_source_id", "source_id"),
     )
