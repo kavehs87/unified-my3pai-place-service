@@ -584,3 +584,116 @@ npx @redocly/cli build-docs docs/openapi.json -o docs/index.html --config docs/r
 ## Plans
 
 See `plans/` for design documents, audit reports, and implementation plans.
+
+---
+
+## LLM Content Rephrasing (my3pai Source)
+
+**Status:** ✅ Complete — 20 entities tested, production-ready  
+**Plan:** `plans/rephrase-from-source.md`
+
+### Overview
+
+The `rephrase_from_source` admin script rephrases entity data (name, summary, description) via LLM and creates new entities under a target source (e.g., `rexby` → `my3pai`). Original records remain untouched.
+
+**Key Features:**
+- Single LLM call per entity returns JSON with `rephrased_name`, `rephrased_summary`, `rephrased_description`
+- Resume support — skips already-processed entities on restart
+- Stop mechanism — graceful shutdown via `.stop` file or admin UI button
+- Slug generation from rephrased name (regex, no LLM needed)
+- Attributes copied as-is from original source
+
+### Quick Start
+
+```bash
+# Dry run (preview)
+uv run python scripts/rephrase.py --source rexby --dry-run
+
+# Live run, 100 entities
+uv run python scripts/rephrase.py --source rexby --limit 100
+
+# Resume from where left off
+uv run python scripts/rephrase.py --source rexby
+
+# Custom parameters
+uv run python scripts/rephrase.py --source rexby --limit 50 --temperature 0.9
+```
+
+### LLM Configuration
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| **Endpoint** | `http://10.0.2.2:8080` | Ollama/llamacpp |
+| **Model** | `local-qwen` | Qwen2.5-72B-Q8.gguf |
+| **Max Tokens** | 10240 | Reasoning models need room for thought + output |
+| **Temperature** | 0.8–1.0 | Higher for more creative rephrasing |
+| **Avg Response Time** | ~5-10s | Per entity |
+
+### Original vs. Rephrased Examples
+
+#### Example 1: Fukuoka Shopping Complex
+
+| Field | Original (rexby) | Rephrased (my3pai) |
+|-------|------------------|-------------------|
+| **Name** | `Grand complexe commercial` | `Fukuoka Grand Shopping & Leisure Complex` |
+| **Summary** | `Grand complexe commercial et de loisirs à Fukuoka.` | `This sprawling retail and entertainment hub in Fukuoka blends extensive shopping, diverse dining, and playful attractions into one convenient stop for travelers.` |
+| **Description** | `Grand complexe commercial et de loisirs à Fukuoka. Un immense centre avec boutiques, restaurants et divertissements.` | `Spanning a massive footprint in the heart of Fukuoka, this sprawling retail and entertainment destination is the perfect base camp for shoppers and travelers seeking a break between sightseeing. The sheer scale of the venue makes it easy to lose track of time as you weave through its many levels.` |
+
+#### Example 2: Taipei Zhongshan District
+
+| Field | Original (rexby) | Rephrased (my3pai) |
+|-------|------------------|-------------------|
+| **Name** | `One of Taipei's Popular Districts` | `Zhongshan District: Taipei's Trendy Local Haven` |
+| **Summary** | `One of Taipei's most crowded areas! You can do lots of shopping and food hunting here...` | `Discover Zhongshan, one of Taipei's most vibrant neighborhoods where young locals gather to explore independent boutiques, street food, and trendy cafés. A more authentic alternative to Ximen...` |
+| **Description** | `One of Taipei's most crowded areas! You can do lots of shopping and food hunting here, many locals especially young adults spend their time browsing through many of Zhongshan's stores.` | `Pulse with the rhythm of everyday Taipei life in Zhongshan, a dynamic neighborhood that draws crowds of young locals and culture seekers alike. Unlike the heavily commercialized streets of Ximen, this area retains a distinctly authentic charm.` |
+
+#### Example 3: Arashiyama Ramen
+
+| Field | Original (rexby) | Rephrased (my3pai) |
+|-------|------------------|-------------------|
+| **Name** | `Unique Arashiyama Ramen Experience` | `Arashiyama's Turtle Broth Ramen Counter` |
+| **Summary** | `Tucked away in the beautiful Arashiyama district, this isn't your average ramen spot...` | `Savor a rare culinary adventure in Arashiyama at this intimate counter serving ramen enriched with soft-shell turtle broth, kept piping hot over an in-house flame.` |
+| **Description** | `Tucked away in the beautiful Arashiyama district, this isn't your average ramen spot. Here, you'll discover a truly unique bowl featuring a rich, flavorful broth made with soft-shell turtle.` | `Tucked away in the scenic Arashiyama district, this intimate ramen counter offers a truly unique culinary experience. The star attraction is a rich, flavorful broth crafted from soft-shell turtle, simmered for hours and served piping hot over an open flame.` |
+
+### Test Results
+
+| Metric | Batch 1 (4096 tokens) | Batch 2 (10240 tokens) |
+|--------|----------------------|------------------------|
+| **Entities processed** | 10 | 20 (10 new, 10 skipped) |
+| **Entities created** | 10 | 10 |
+| **Errors** | 0 | 0 |
+| **Avg summary length** | 267 chars | 251 chars |
+| **Avg description length** | 1101 chars | 1169 chars |
+
+### Quality Assessment
+
+✅ **Names:** More descriptive and engaging  
+✅ **Summaries:** Rewritten in consistent brand voice  
+✅ **Descriptions:** Enriched while preserving factual content  
+✅ **HTML:** Stripped, plain text output  
+✅ **Empty fields:** Preserved as empty (not invented)
+
+### Admin UI Integration
+
+The script auto-discovers via `registry.py` and appears in the **Tools → Scripts** page.
+
+1. Navigate to **Tools → Scripts**
+2. Find `rephrase_from_source`
+3. Configure parameters (source, target, limit, temperature)
+4. Click **Run**
+5. Monitor progress via polling endpoint
+
+**Stop from UI:** Click the **Stop** button next to the running script. This creates a `.stop` file that the script checks between batches.
+
+### Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/dmo/admin_scripts/rephrase_from_source.py` | 495 | Main admin script |
+| `scripts/rephrase.py` | 154 | CLI entry point |
+| `migrations/versions/012_add_rephrased_state.py` | 28 | State tracking table |
+| `src/dmo/models/database.py` | 22 | My3paiRephrased SQLModel |
+| `src/dmo/admin/router.py` | 15 | Stop endpoint |
+| `tests/test_rephrase_from_source.py` | 475 | Comprehensive test suite |
+
+**Total:** ~1,189 lines added

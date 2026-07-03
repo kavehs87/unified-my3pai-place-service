@@ -292,7 +292,7 @@ class RephraseFromSource(AdminScript):
                                 {"role": "user", "content": prompt},
                             ],
                             temperature=llm_temperature,
-                            max_tokens=1024,
+                            max_tokens=10240,
                         )
                     except Exception as e:
                         errors += 1
