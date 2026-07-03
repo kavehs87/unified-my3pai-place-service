@@ -138,7 +138,8 @@ async def main():
                 if not content:
                     raise ValueError("Empty content from LLM")
                 
-                log(f"LLM response ({len(content)} chars), has JSON: {'{'} in content")
+                h = hash(content[:80]) % 100000
+                log(f"LLM response #{h} ({len(content)} chars)")
                 return content
     
     # Priority: CLI args > admin settings > OpenCode Zen

@@ -604,9 +604,9 @@ class RephraseFromSource(AdminScript):
                     "phone, email, access_type, recommended_season, "
                     "is_barrier_free, rating, favorite_count, currency, price_level "
                     f"FROM entities WHERE {' AND '.join(batch_where)} "
-                    f"ORDER BY source_id LIMIT :limit"
+                    f"ORDER BY source_id LIMIT :limit OFFSET :offset"
                 )
-                fetch_params: dict = {"limit": limit}
+                fetch_params: dict = {"limit": limit, "offset": processed}
                 if source and source != "*":
                     fetch_params["source"] = source
 
