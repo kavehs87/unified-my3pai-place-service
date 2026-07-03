@@ -298,206 +298,150 @@ class RephraseFromSource(AdminScript):
             )
             raise
 
-    async def _process_entity(
+    async def _call_llm_for_entity(
         self,
         entity_data: dict,
         llm,
-        db,
-        target_source: str,
-        prefix: str,
-        dry_run: bool,
         semaphore: asyncio.Semaphore,
         llm_temperature: float,
-    ) -> dict:
-        """Process a single entity with LLM call and DB insert.
-        
-        Returns: {"success": bool, "entity_id": str, "error": str, "quality": dict, "rephrased": dict}
-        """
-        orig_source_id = entity_data["orig_source_id"]
-        new_source_id = f"{prefix}{orig_source_id}"
-        
+    ) -> dict | None:
+        """Call LLM for a single entity (parallel-safe, no DB access)."""
         async with semaphore:
-            # Build prompt
             prompt = self.USER_PROMPT_TEMPLATE.format(
                 name=entity_data["orig_name"],
                 summary=entity_data["orig_summary"],
                 description=entity_data["orig_description"],
             )
             
-            # Call LLM with retries for reasoning-only responses
-            response = None
+            rephrased = None
             for attempt in range(DEFAULT_MAX_RETRIES + 1):
                 try:
                     response = await self._call_llm(llm, prompt, llm_temperature, max_retries=1)
-                    # Try to parse - if it fails with reasoning error, retry
-                    try:
-                        rephrased = await self._parse_llm_response(response)
-                        break  # Success
-                    except ValueError as e:
-                        if "reasoning only" in str(e) and attempt < DEFAULT_MAX_RETRIES:
-                            logger.warning("rephrase_reasoning_retry", attempt=attempt + 1)
-                            await asyncio.sleep(1)
-                            continue
-                        raise
+                    rephrased = await self._parse_llm_response(response)
+                    break
+                except ValueError as e:
+                    if "reasoning only" in str(e) and attempt < DEFAULT_MAX_RETRIES:
+                        logger.warning("rephrase_reasoning_retry", attempt=attempt + 1)
+                        await asyncio.sleep(1)
+                        continue
+                    break
                 except Exception as e:
                     if attempt < DEFAULT_MAX_RETRIES:
                         logger.warning("rephrase_llm_retry", error=str(e), attempt=attempt + 1)
                         await asyncio.sleep(1)
                         continue
-                    return {
-                        "success": False,
-                        "entity_id": None,
-                        "error": f"LLM error: {str(e)}",
-                        "quality": None,
-                        "rephrased": None,
-                        "entity_data": entity_data,
-                    }
+                    break
             
-            if response is None:
-                return {
-                    "success": False,
-                    "entity_id": None,
-                    "error": "No valid response after retries",
-                    "quality": None,
-                    "rephrased": None,
-                    "entity_data": entity_data,
-                }
+            if rephrased is None:
+                return None
             
-            # Parse JSON (already validated above, but handle edge cases)
-            try:
-                rephrased = await self._parse_llm_response(response)
-            except (json.JSONDecodeError, AttributeError, ValueError) as e:
-                return {
-                    "success": False,
-                    "entity_id": None,
-                    "error": f"JSON parse error: {str(e)}",
-                    "quality": None,
-                    "rephrased": None,
-                    "entity_data": entity_data,
-                }
-            
-            # Validate
-            new_name = rephrased.get("rephrased_name", "") or ""
-            new_summary = rephrased.get("rephrased_summary", "") or ""
-            new_description = rephrased.get("rephrased_description", "") or ""
+            new_name = (rephrased.get("rephrased_name", "") or "").strip()
+            new_summary = (rephrased.get("rephrased_summary", "") or "").strip()
+            new_description = (rephrased.get("rephrased_description", "") or "").strip()
             
             quality = _validate_rephrased(entity_data, rephrased)
             
             if not new_name:
-                return {
-                    "success": False,
-                    "entity_id": None,
-                    "error": "empty_name",
-                    "quality": quality,
-                    "rephrased": rephrased,
-                    "entity_data": entity_data,
-                }
+                return {"error": "empty_name", "quality": quality, "rephrased": rephrased, "entity_data": entity_data}
             
-            if not dry_run:
-                # Check for collision
-                collision_check = text(
-                    "SELECT 1 FROM entities "
-                    "WHERE source = :target AND source_id = :sid LIMIT 1"
+            return {
+                "success": True,
+                "new_name": new_name,
+                "new_summary": new_summary,
+                "new_description": new_description,
+                "quality": quality,
+                "rephrased": rephrased,
+                "entity_data": entity_data,
+            }
+
+    async def _insert_entity(
+        self,
+        db,
+        entity_data: dict,
+        rephrased: dict,
+        target_source: str,
+        new_source_id: str,
+        new_name: str,
+        new_summary: str,
+        new_description: str,
+    ) -> str:
+        """Insert entity into DB (not parallel-safe, call sequentially)."""
+        from dmo.models.database import Entity
+        
+        collision_check = text(
+            "SELECT 1 FROM entities WHERE source = :target AND source_id = :sid LIMIT 1"
+        )
+        collision = await db.execute(
+            collision_check,
+            {"target": target_source, "sid": new_source_id},
+        )
+        if collision.scalar():
+            return None
+        
+        entity = Entity(
+            source=target_source,
+            source_id=new_source_id,
+            source_url=entity_data["orig_source_url"],
+            name=new_name,
+            slug=_make_slug(new_name),
+            summary=new_summary if new_summary else None,
+            description=_strip_html(new_description) if new_description else None,
+            description_format="text",
+            place_type=entity_data["orig_place_type"],
+            secondary_types=entity_data["orig_secondary_types"],
+            latitude=entity_data["orig_lat"],
+            longitude=entity_data["orig_lon"],
+            country=entity_data["orig_country"],
+            region=entity_data["orig_region"],
+            locality=entity_data["orig_locality"],
+            region_names=entity_data["orig_region_names"],
+            thumbnail_url=entity_data["orig_thumbnail"],
+            website=entity_data["orig_website"],
+            is_free=entity_data["orig_is_free"] or False,
+            is_open=entity_data["orig_is_open"],
+            opening_hours=entity_data["orig_opening_hours"],
+            business_status=entity_data["orig_business_status"],
+            phone=entity_data["orig_phone"],
+            email=entity_data["orig_email"],
+            access_type=entity_data["orig_access_type"],
+            recommended_season=entity_data["orig_season"],
+            is_barrier_free=entity_data["orig_barrier_free"] or False,
+            rating=entity_data["orig_rating"],
+            favorite_count=entity_data["orig_fav_count"] or 0,
+            currency=entity_data["orig_currency"],
+            price_level=entity_data["orig_price_level"],
+            attributes=entity_data["orig_attributes"],
+            is_active=True,
+        )
+        
+        db.add(entity)
+        await db.flush()
+        
+        if entity_data["orig_lat"] is not None and entity_data["orig_lon"] is not None:
+            await db.execute(
+                text(
+                    "UPDATE entities SET location = ST_SetSRID("
+                    "ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid"
+                ).bindparams(
+                    lat=entity_data["orig_lat"],
+                    lon=entity_data["orig_lon"],
+                    eid=entity.id,
                 )
-                collision = await db.execute(
-                    collision_check,
-                    {"target": target_source, "sid": new_source_id},
-                )
-                if collision.scalar():
-                    return {
-                        "success": False,
-                        "entity_id": None,
-                        "error": f"collision: {new_source_id}",
-                        "quality": quality,
-                        "rephrased": rephrased,
-                        "entity_data": entity_data,
-                    }
-                
-                # Insert entity via ORM
-                from dmo.models.database import Entity
-                
-                entity = Entity(
-                    source=target_source,
-                    source_id=new_source_id,
-                    source_url=entity_data["orig_source_url"],
-                    name=new_name,
-                    slug=_make_slug(new_name),
-                    summary=new_summary if new_summary else None,
-                    description=_strip_html(new_description) if new_description else None,
-                    description_format="text",
-                    place_type=entity_data["orig_place_type"],
-                    secondary_types=entity_data["orig_secondary_types"],
-                    latitude=entity_data["orig_lat"],
-                    longitude=entity_data["orig_lon"],
-                    country=entity_data["orig_country"],
-                    region=entity_data["orig_region"],
-                    locality=entity_data["orig_locality"],
-                    region_names=entity_data["orig_region_names"],
-                    thumbnail_url=entity_data["orig_thumbnail"],
-                    website=entity_data["orig_website"],
-                    is_free=entity_data["orig_is_free"] or False,
-                    is_open=entity_data["orig_is_open"],
-                    opening_hours=entity_data["orig_opening_hours"],
-                    business_status=entity_data["orig_business_status"],
-                    phone=entity_data["orig_phone"],
-                    email=entity_data["orig_email"],
-                    access_type=entity_data["orig_access_type"],
-                    recommended_season=entity_data["orig_season"],
-                    is_barrier_free=entity_data["orig_barrier_free"] or False,
-                    rating=entity_data["orig_rating"],
-                    favorite_count=entity_data["orig_fav_count"] or 0,
-                    currency=entity_data["orig_currency"],
-                    price_level=entity_data["orig_price_level"],
-                    attributes=entity_data["orig_attributes"],
-                    is_active=True,
-                )
-                
-                db.add(entity)
-                await db.flush()
-                
-                # Set PostGIS location if coordinates present
-                if entity_data["orig_lat"] is not None and entity_data["orig_lon"] is not None:
-                    await db.execute(
-                        text(
-                            "UPDATE entities SET location = ST_SetSRID("
-                            "ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid"
-                        ).bindparams(
-                            lat=entity_data["orig_lat"],
-                            lon=entity_data["orig_lon"],
-                            eid=entity.id,
-                        )
-                    )
-                
-                # Record in state table
-                await db.execute(
-                    text(
-                        "INSERT INTO my3pai_rephrased (source, source_id, entity_id) "
-                        "VALUES (:source, :sid, :eid)"
-                    ),
-                    {
-                        "source": target_source,
-                        "sid": new_source_id,
-                        "eid": str(entity.id),
-                    },
-                )
-                
-                return {
-                    "success": True,
-                    "entity_id": str(entity.id),
-                    "error": None,
-                    "quality": quality,
-                    "rephrased": rephrased,
-                    "entity_data": entity_data,
-                }
-            else:
-                return {
-                    "success": True,
-                    "entity_id": None,
-                    "error": None,
-                    "quality": quality,
-                    "rephrased": rephrased,
-                    "entity_data": entity_data,
-                }
+            )
+        
+        await db.execute(
+            text(
+                "INSERT INTO my3pai_rephrased (source, source_id, entity_id) "
+                "VALUES (:source, :sid, :eid)"
+            ),
+            {
+                "source": target_source,
+                "sid": new_source_id,
+                "eid": str(entity.id),
+            },
+        )
+        
+        return str(entity.id)
 
     def _print_sample_outputs(self, samples: list[dict]):
         """Print 5 sample outputs for visual review."""
@@ -665,69 +609,82 @@ class RephraseFromSource(AdminScript):
                 if not entity_batch:
                     break
 
-                # Process in parallel
+                # Process LLM calls in parallel (no DB access)
                 semaphore = asyncio.Semaphore(concurrency)
                 tasks = [
-                    self._process_entity(
+                    self._call_llm_for_entity(
                         entity,
                         llm,
-                        db,
-                        target_source,
-                        prefix,
-                        dry_run,
                         semaphore,
                         llm_temperature,
                     )
                     for entity in entity_batch
                 ]
 
-                # Gather results
                 results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Count successes/errors
+                # Track results and do DB writes sequentially
                 batch_created = 0
-                for result in results:
+                batch_inserts = []  # Entities to insert into DB
+                for i, result in enumerate(results):
+                    entity_batch[i]
+                    
                     if isinstance(result, Exception):
                         errors += 1
-                        logger.error(
-                            "rephrase_entity_error",
-                            error=str(result),
-                            exc_info=True,
-                        )
-                    elif isinstance(result, dict):
-                        if result.get("success"):
-                            created += 1
-                            batch_created += 1
-                        else:
-                            errors += 1
-                            error_msg = result.get("error", "unknown")
-                            logger.warning(
-                                "rephrase_entity_failed",
-                                error=error_msg,
-                            )
-                        
-                        # Track quality for all results (success or fail)
+                        logger.error("rephrase_llm_error", error=str(result), exc_info=True)
+                        continue
+                    
+                    if result is None:
+                        errors += 1
+                        logger.warning("rephrase_entity_failed", error="LLM returned None")
+                        continue
+                    
+                    if not result.get("success"):
+                        errors += 1
+                        error_msg = result.get("error", "unknown")
+                        logger.warning("rephrase_entity_failed", error=error_msg)
                         if result.get("quality"):
                             quality_results.append(result["quality"])
-                        
-                        if dry_run and len(sample_outputs) < 5:
-                            rephrased = result.get("rephrased", {})
-                            quality = result.get("quality", {})
-                            entity = result.get("entity_data", {})
-                            sample_outputs.append({
-                                "original_name": entity.get("orig_name", ""),
-                                "original_summary": entity.get("orig_summary", ""),
-                                "rephrased_name": rephrased.get("rephrased_name", "") if rephrased else "",
-                                "rephrased_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
-                                "valid": quality.get("valid", False) if quality else False,
-                                "issues": quality.get("issues", []) if quality else [],
-                            })
-                    else:
-                        errors += 1
-                        logger.warning(
-                            "rephrase_entity_failed",
-                            error=str(result),
+                        continue
+                    
+                    # Successful LLM call
+                    success = True
+                    entity_data = result["entity_data"]
+                    new_source_id = f"{prefix}{entity_data['orig_source_id']}"
+                    
+                    if not dry_run:
+                        # Check collision and insert sequentially
+                        eid = await self._insert_entity(
+                            db, entity_data, result["rephrased"],
+                            target_source, new_source_id,
+                            result["new_name"], result["new_summary"], result["new_description"],
                         )
+                        if eid is None:
+                            success = False
+                            errors += 1
+                            logger.warning("rephrase_entity_collision", source_id=new_source_id)
+                    
+                    if success:
+                        created += 1
+                        batch_created += 1
+                    
+                    if result.get("quality"):
+                        quality_results.append(result["quality"])
+                    
+                    if dry_run and len(sample_outputs) < 5:
+                        rephrased = result.get("rephrased", {})
+                        quality = result.get("quality", {})
+                        sample_outputs.append({
+                            "original_name": entity_data.get("orig_name", ""),
+                            "original_summary": entity_data.get("orig_summary", ""),
+                            "rephrased_name": rephrased.get("rephrased_name", "") if rephrased else "",
+                            "rephrased_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
+                            "valid": quality.get("valid", False) if quality else False,
+                            "issues": quality.get("issues", []) if quality else [],
+                        })
+
+                if not dry_run:
+                    await db.commit()
 
                 processed += len(entity_batch)
 

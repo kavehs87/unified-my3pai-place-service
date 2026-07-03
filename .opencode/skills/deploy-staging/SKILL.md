@@ -1,67 +1,70 @@
 ---
 name: deploy-staging
-description: Upload project to staging Proxmox VM via rsync and run full deployment (docker build, DB migrate, service restart, health check). Use when the user says "deploy to staging", "push to staging", "upload to VM", or "staging deploy".
+description: Upload project to any environment (test/staging/production) via rsync and run full deployment (docker build, DB migrate, service restart, health check). Use when the user says "deploy", "push to staging", "upload to VM", or "deploy to prod".
 ---
 
-# Deploy to Staging Proxmox VM
+# Deploy to VM (Test / Staging / Production)
 
-Uploads the entire project to a staging Proxmox VM using rsync, then runs the full deployment pipeline. The VM runs Docker Compose with the same stack as production.
+Uploads the project to a target VM using rsync, deploys the environment-specific Docker Compose file as `docker-compose.yml`, then runs the full deployment pipeline.
 
 ## Prerequisites
 
-- SSH key-based access to the staging VM (no password prompt)
+- SSH key-based access to the target VM (no password prompt)
 - Docker + Docker Compose installed on the VM
 - `rsync` available locally
 
 ## Configuration
 
-Set these environment variables or create `.env.staging` in project root:
+Create environment config files in project root:
 
-| Variable | Default | Description |
-|---|---|---|
-| `STAGING_HOST` | `192.168.1.100` | VM IP or hostname |
-| `STAGING_USER` | `deploy` | SSH username on VM |
-| `STAGING_PATH` | `/opt/dmo-staging` | Destination directory on VM |
-| `STAGING_SSH_KEY` | `~/.ssh/id_ed25519` | Path to SSH private key |
-| `STAGING_SSH_PORT` | `22` | SSH port on VM |
-| `STAGING_COMPOSE_FILE` | `docker-compose.prod.yml` | Docker Compose file to use |
-| `STAGING_DB_MIGRATE` | `true` | Run Alembic migrations after deploy |
+| File | Variables | Target |
+|------|-----------|--------|
+| `.env.test` | `TEST_HOST`, `TEST_USER`, `TEST_PATH`, `TEST_SSH_KEY` | Test VM |
+| `.env.staging` | `STAGING_HOST`, `STAGING_USER`, `STAGING_PATH`, `STAGING_SSH_KEY` | Staging VM |
+| `.env.production` | `PROD_HOST`, `PROD_USER`, `PROD_PATH`, `PROD_SSH_KEY` | Production VM |
+
+## Environment-Specific Compose Files
+
+Each environment gets its own compose file with appropriate resource limits. On deploy, the correct file is copied as `docker-compose.yml` on the target VM.
+
+| Source File | Deployed As | Resources |
+|-------------|-------------|-----------|
+| `docker-compose.test.yml` | `docker-compose.yml` | 4 CPU / 4 GB RAM |
+| `docker-compose.staging.yml` | `docker-compose.yml` | 4 CPU / 3 GB RAM |
+| `docker-compose.prod.yml` | `docker-compose.yml` | 16 CPU / 8 GB RAM |
 
 ## Deployment Pipeline
 
-The deploy script (`scripts/deploy-staging.sh`) executes these steps in order:
+The deploy script (`scripts/deploy.sh`) executes these steps in order:
 
 1. **Validate** — Check SSH connectivity and required tools
-2. **Sync** — rsync project files to VM (excluding `.git`, `.venv`, `__pycache__`, `tests/`, `plans/`, `docs/`, `.env*`, etc.)
-3. **Docker Build** — SSH into VM and run `docker compose build`
-4. **Migrate** — SSH into VM and run Alembic migrations inside the api container
-5. **Restart** — SSH into VM and run `docker compose up -d`
-6. **Health Check** — Poll `http://$STAGING_HOST:8000/health` until 200 or timeout
+2. **Sync** — rsync project files to VM (excluding `.git`, `.venv`, `__pycache__`, `.env*`, non-target compose files)
+3. **Compose setup** — Copy environment-specific compose file as `docker-compose.yml`
+4. **Docker Build** — SSH into VM and run `docker compose build`
+5. **Migrate** — SSH into VM and run Alembic migrations inside the api container
+6. **Restart** — SSH into VM and run `docker compose up -d`
+7. **Health Check** — Poll `http://$HOST:8000/health` until 200 or timeout
 
 ## Usage
 
-### Manual execution
-
 ```bash
-# Option A: Set env vars directly
-STAGING_HOST=192.168.1.100 STAGING_USER=deploy ./scripts/deploy-staging.sh
+# Deploy to test VM
+./scripts/deploy.sh --test
 
-# Option B: Create .env.staging file (auto-loaded by script)
-echo "STAGING_HOST=192.168.1.100" > .env.staging
-echo "STAGING_USER=deploy" >> .env.staging
-./scripts/deploy-staging.sh
-```
+# Deploy to staging VM
+./scripts/deploy.sh --staging
 
-### Dry run (rsync only, no deploy)
+# Deploy to production VM
+./scripts/deploy.sh --prod
 
-```bash
-./scripts/deploy-staging.sh --dry-run
-```
+# Dry run (preview rsync changes)
+./scripts/deploy.sh --prod --dry-run
 
-### Sync only (skip docker steps)
+# Sync only (skip Docker steps)
+./scripts/deploy.sh --prod --sync-only
 
-```bash
-./scripts/deploy-staging.sh --sync-only
+# Skip migrations
+./scripts/deploy.sh --prod --no-migrate
 ```
 
 ## rsync Exclusions
@@ -72,10 +75,13 @@ The following are excluded from upload:
 - `.venv/` — local Python virtual environment
 - `__pycache__/`, `*.pyc` — Python cache
 - `.pytest_cache/`, `.ruff_cache/` — tool caches
-- `tests/`, `loadtest/` — test directories
+- `loadtest/` — load test scripts
 - `plans/` — planning documents
 - `docs/` — generated documentation
+- `backups/` — database backups
 - `.env`, `.env.*` — environment secrets
+- `docker-compose.yml` — local dev compose file
+- Non-target compose files (e.g., `docker-compose.prod.yml` when deploying to staging)
 - `.DS_Store` — macOS metadata
 - `*.egg-info` — Python package metadata
 - `.opencode/` — opencode config
@@ -86,11 +92,11 @@ The following are excluded from upload:
 
 | Problem | Fix |
 |---|---|
-| SSH connection refused | Verify `STAGING_HOST` and `STAGING_SSH_PORT`. Check VM is running. |
+| SSH connection refused | Verify host IP and SSH port. Check VM is running. |
 | Permission denied | Ensure SSH key is added to VM's `~/.ssh/authorized_keys`. |
 | rsync fails on large files | Add `--partial` flag for resumable transfers. |
-| Docker build fails | Check VM disk space: `ssh $STAGING_USER@$STAGING_HOST df -h` |
-| Health check times out | Check container logs: `ssh $STAGING_USER@$STAGING_HOST docker compose -f docker-compose.prod.yml logs --tail=50 api` |
+| Docker build fails | Check VM disk space: `ssh user@host df -h` |
+| Health check times out | Check container logs: `ssh user@host docker compose -f docker-compose.yml logs --tail=50 api` |
 | Migration fails | Verify DB is accessible from the container. Check `.env` on VM has correct `DATABASE_URL`. |
 
 ## Safety Notes
@@ -98,3 +104,4 @@ The following are excluded from upload:
 - The script uses `rsync --delete` to remove files on the VM that no longer exist locally. Use `--dry-run` to preview changes.
 - Docker containers are stopped gracefully before restart. If health check fails, old containers are NOT removed, allowing rollback.
 - The `.env` file on the VM is never overwritten by rsync (it's excluded). Manage VM secrets separately.
+- Each environment deploys its own compose file — deploying to one environment never affects another.

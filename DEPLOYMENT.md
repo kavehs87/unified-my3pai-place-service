@@ -133,13 +133,13 @@ nano .env  # Edit production values (see §5)
 cd /root/ups
 
 # Build all services
-docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.yml build
 
 # Start in detached mode
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml up -d
 
 # Watch startup logs
-docker compose -f docker-compose.prod.yml logs -f api
+docker compose -f docker-compose.yml logs -f api
 ```
 
 ### 4.3 Verify
@@ -219,7 +219,11 @@ CACHE_DEBUG=false
 | Redis `maxmemory` | 0 (unlimited) | **1gb** | Prevent OOM kills at peak |
 | Redis `maxmemory-policy` | noeviction | **allkeys-lru** | Graceful degradation |
 
-### 5.3 `docker-compose.prod.yml` resource limits
+### 5.3 Compose file resource limits
+
+Each environment has its own compose file (`docker-compose.{test,staging,prod}.yml`) deployed as `docker-compose.yml` on the target VM.
+
+**Production (16 CPU / 8 GB RAM):**
 
 ```yaml
 api:
@@ -524,10 +528,10 @@ docker run --rm -v ups_pgdata:/pgdata -v $(pwd):/backup alpine \
 
 | Scenario | Recovery |
 |----------|----------|
-| API crash | `docker compose -f docker-compose.prod.yml up -d api` (auto-restarts) |
-| Redis crash | `docker compose -f docker-compose.prod.yml up -d redis` (RDB auto-loads) |
-| DB crash | `docker compose -f docker-compose.prod.yml up -d db` (WAL auto-recovers) |
-| Full host reboot | `docker compose -f docker-compose.prod.yml up -d` (all auto-recover) |
+| API crash | `docker compose -f docker-compose.yml up -d api` (auto-restarts) |
+| Redis crash | `docker compose -f docker-compose.yml up -d redis` (RDB auto-loads) |
+| DB crash | `docker compose -f docker-compose.yml up -d db` (WAL auto-recovers) |
+| Full host reboot | `docker compose -f docker-compose.yml up -d` (all auto-recover) |
 | Power loss | Services auto-recover via WAL/RDB; verify with `/health` |
 | Data corruption | Restore from `pg_dump` backup |
 
@@ -590,9 +594,9 @@ redis:
 
 ```bash
 # Check container logs
-docker compose -f docker-compose.prod.yml logs --tail=100 api
-docker compose -f docker-compose.prod.yml logs --tail=100 db
-docker compose -f docker-compose.prod.yml logs --tail=100 redis
+docker compose -f docker-compose.yml logs --tail=100 api
+docker compose -f docker-compose.yml logs --tail=100 db
+docker compose -f docker-compose.yml logs --tail=100 redis
 
 # Check environment variables
 docker exec ups-api-1 printenv
@@ -623,20 +627,20 @@ docker exec -it ups-api-1 alembic downgrade -1
 
 ```bash
 # Restart single service
-docker compose -f docker-compose.prod.yml restart api
+docker compose -f docker-compose.yml restart api
 
 # Rebuild and restart (after code changes)
-docker compose -f docker-compose.prod.yml build api
-docker compose -f docker-compose.prod.yml up -d api
+docker compose -f docker-compose.yml build api
+docker compose -f docker-compose.yml up -d api
 
 # Full restart
-docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.yml up -d
 
 # Force clean rebuild
-docker compose -f docker-compose.prod.yml down --rmi local
-docker compose -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.yml down --rmi local
+docker compose -f docker-compose.yml build --no-cache
+docker compose -f docker-compose.yml up -d
 ```
 
 ---
@@ -656,7 +660,7 @@ scp -r src/ Dockerfile pyproject.toml uv.lock entrypoint.sh \
   root@<host>:/root/ups/
 
 # Rebuild on host
-ssh root@<host> 'cd /root/ups && docker compose -f docker-compose.prod.yml build api && docker compose -f docker-compose.prod.yml up -d api'
+ssh root@<host> 'cd /root/ups && docker compose -f docker-compose.yml build api && docker compose -f docker-compose.yml up -d api'
 ```
 
 ### 13.2 Database rollback
@@ -677,9 +681,9 @@ cat dmo-backup.sql | docker exec -i ups-db-1 psql -U postgres dmo
 
 ```bash
 # .env changes take effect on restart
-docker compose -f docker-compose.prod.yml down api
+docker compose -f docker-compose.yml down api
 # Edit .env
-docker compose -f docker-compose.prod.yml up -d api
+docker compose -f docker-compose.yml up -d api
 ```
 
 ---
@@ -705,8 +709,8 @@ Key takeaways:
 ## Appendix C: File layout
 
 ```
-/root/ups/                          # Production directory
-├── docker-compose.prod.yml         # Service definitions
+/root/ups/                          # Target directory
+├── docker-compose.yml              # Service definitions (environment-specific)
 ├── .env                            # Configuration (gitignored)
 ├── Dockerfile                      # API image build
 ├── pyproject.toml                  # Python dependencies

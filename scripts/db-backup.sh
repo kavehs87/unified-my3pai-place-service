@@ -12,7 +12,7 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_ROOT/backups}"
 BACKUP_RETENTION="${BACKUP_RETENTION:-999999}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 REMOTE_MODE=false
 
 STAGING_HOST="${STAGING_HOST:-}"
@@ -20,6 +20,8 @@ STAGING_USER="${STAGING_USER:-root}"
 STAGING_PATH="${STAGING_PATH:-/root/ups}"
 STAGING_SSH_KEY="${STAGING_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 STAGING_SSH_PORT="${STAGING_SSH_PORT:-22}"
+
+PROD_MODE=false
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -39,15 +41,17 @@ die()     { error "$*"; exit 1; }
 while [[ $# -gt 0 ]]; do
   case $1 in
     --remote)  REMOTE_MODE=true; shift ;;
+    --prod)    PROD_MODE=true; REMOTE_MODE=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [--remote]"
+      echo "Usage: $0 [--remote] [--prod]"
       echo ""
-      echo "  --remote  Backup from remote VM (requires STAGING_HOST)"
+      echo "  --remote  Backup from staging VM (requires STAGING_HOST or .env.staging)"
+      echo "  --prod    Backup from production VM (requires .env.production)"
       echo ""
       echo "Environment variables:"
       echo "  BACKUP_DIR        Output directory (default: ./backups)"
       echo "  BACKUP_RETENTION  Number of backups to keep (default: 7)"
-      echo "  COMPOSE_FILE      Docker Compose file (default: docker-compose.prod.yml)"
+      echo "  COMPOSE_FILE      Docker Compose file (default: docker-compose.yml)"
       echo "  STAGING_HOST      Remote VM IP/hostname (required for --remote)"
       echo "  STAGING_USER      SSH username (default: root)"
       echo "  STAGING_PATH      Project dir on VM (default: /root/ups)"
@@ -60,7 +64,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ─── Load env files ──────────────────────────────────────────────────────────
-if $REMOTE_MODE; then
+if $PROD_MODE; then
+  if [[ -f "$PROJECT_ROOT/.env.production" ]]; then
+    info "Loading .env.production"
+    set -a
+    # shellcheck disable=SC1091
+    . "$PROJECT_ROOT/.env.production"
+    set +a
+  fi
+  STAGING_HOST="${PROD_HOST:-$STAGING_HOST}"
+  STAGING_USER="${PROD_USER:-$STAGING_USER}"
+  STAGING_PATH="${PROD_PATH:-$STAGING_PATH}"
+  STAGING_SSH_KEY="${PROD_SSH_KEY:-$STAGING_SSH_KEY}"
+  STAGING_SSH_PORT="${PROD_SSH_PORT:-$STAGING_SSH_PORT}"
+  if [[ -z "$STAGING_HOST" ]]; then
+    die "PROD_HOST is required for --prod mode. Set it or use .env.production."
+  fi
+elif $REMOTE_MODE; then
   if [[ -f "$PROJECT_ROOT/.env.staging" ]]; then
     info "Loading .env.staging"
     set -a
@@ -101,7 +121,8 @@ run_scp() {
 info "=== Step 1: Validate ==="
 
 if $REMOTE_MODE; then
-  info "Mode: remote (${STAGING_USER}@${STAGING_HOST})"
+  MODE_LABEL="$PROD_MODE" && MODE_LABEL="production" || MODE_LABEL="staging"
+  info "Mode: remote (${MODE_LABEL} — ${STAGING_USER}@${STAGING_HOST})"
   for cmd in ssh scp; do
     command -v "$cmd" >/dev/null 2>&1 || die "$cmd is not installed"
   done
@@ -145,7 +166,8 @@ fi
 TIMESTAMP="$(date +%Y-%m-%d_%H%M%S)"
 BACKUP_PATH="${BACKUP_DIR}/${TIMESTAMP}"
 if $REMOTE_MODE; then
-  BACKUP_PATH="${BACKUP_PATH}_remote_${STAGING_HOST//\./_}"
+  MODE_LABEL="$PROD_MODE" && MODE_LABEL="prod" || MODE_LABEL="staging"
+  BACKUP_PATH="${BACKUP_PATH}_${MODE_LABEL}_${STAGING_HOST//\./_}"
 fi
 mkdir -p "$BACKUP_PATH"
 info "=== Step 3: Backup directory === $BACKUP_PATH"
@@ -204,11 +226,12 @@ else
   TABLE_COUNT=$(docker compose -f "$COMPOSE_FILE" exec -T db psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-dmo}" -t -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'" 2>/dev/null | head -1 | xargs)
 fi
 
+MODE_VALUE="$PROD_MODE" && MODE_VALUE="production" || MODE_VALUE="${REMOTE_MODE}"
 cat > "${BACKUP_PATH}/metadata.json" <<EOF
 {
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "host": "${STAGING_HOST:-localhost}",
-  "mode": "${REMOTE_MODE}",
+  "mode": "${MODE_VALUE}",
   "database": "${POSTGRES_DB:-dmo}",
   "pg_version": "${PG_VERSION:-unknown}",
   "table_count": "${TABLE_COUNT:-unknown}",

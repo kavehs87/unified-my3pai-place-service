@@ -211,7 +211,7 @@ echo "  Step 18: Re-enable rate limiting"
 echo "============================================================"
 echo "  ⚠ REQUIRES MANUAL ACTION on staging VM:"
 echo "    export RATE_LIMIT_ENABLED=true"
-echo "    docker compose -f docker-compose.prod.yml restart api"
+echo "    docker compose -f docker-compose.yml restart api"
 echo "  Then press Enter to continue..."
 if [[ "$DRY_RUN" != "true" ]]; then
   read -r
@@ -238,7 +238,7 @@ echo "  Step 21: Re-disable rate limiting for spatial stress"
 echo "============================================================"
 echo "  ⚠ REQUIRES MANUAL ACTION on staging VM:"
 echo "    export RATE_LIMIT_ENABLED=false"
-echo "    docker compose -f docker-compose.prod.yml restart api"
+echo "    docker compose -f docker-compose.yml restart api"
 echo "  Then press Enter to continue..."
 if [[ "$DRY_RUN" != "true" ]]; then
   read -r

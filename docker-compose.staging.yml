@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: uvicorn dmo.main:app --host 0.0.0.0 --port 8000 --workers 8
+    command: uvicorn dmo.main:app --host 0.0.0.0 --port 8000 --workers 4
     ports:
       - "8000:8000"
     env_file:
@@ -22,8 +22,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4"
-          memory: 2G
+          cpus: "2"
+          memory: 1G
 
   db:
     image: postgis/postgis:16-3.4
@@ -43,12 +43,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "8"
-          memory: 4G
+          cpus: "2"
+          memory: 1.5G
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 1gb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10
     ports:
       - "6379:6379"
     volumes:
@@ -56,7 +56,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1.5G
+          memory: 0.5G
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

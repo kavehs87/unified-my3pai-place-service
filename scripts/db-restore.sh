@@ -12,7 +12,7 @@ set -euo pipefail
 # ─── Defaults ────────────────────────────────────────────────────────────────
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_ROOT/backups}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 REMOTE_MODE=false
 TEST_MODE=false
 FORCE_MODE=false
@@ -24,6 +24,8 @@ STAGING_USER="${STAGING_USER:-root}"
 STAGING_PATH="${STAGING_PATH:-/root/ups}"
 STAGING_SSH_KEY="${STAGING_SSH_KEY:-$HOME/.ssh/id_ed25519}"
 STAGING_SSH_PORT="${STAGING_SSH_PORT:-22}"
+
+PROD_MODE=false
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -44,12 +46,14 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --remote)  REMOTE_MODE=true; shift ;;
     --test)    TEST_MODE=true; shift ;;
+    --prod)    PROD_MODE=true; REMOTE_MODE=true; shift ;;
     --force)   FORCE_MODE=true; shift ;;
     --list)    LIST_MODE=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [--remote] [--test] [--force] [--list] [backup_file]"
+      echo "Usage: $0 [--remote] [--test] [--prod] [--force] [--list] [backup_file]"
       echo ""
-      echo "  --remote      Restore to staging VM (requires STAGING_HOST)"
+      echo "  --remote      Restore to staging VM (requires STAGING_HOST or .env.staging)"
+      echo "  --prod        Restore to production VM (requires .env.production)"
       echo "  --test        Restore to test VM (10.0.1.8)"
       echo "  --force       Skip confirmation prompt"
       echo "  --list        List available backups"
@@ -57,7 +61,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Environment variables:"
       echo "  BACKUP_DIR        Backups directory (default: ./backups)"
-      echo "  COMPOSE_FILE      Docker Compose file (default: docker-compose.prod.yml)"
+      echo "  COMPOSE_FILE      Docker Compose file (default: docker-compose.yml)"
       echo "  STAGING_HOST      Remote VM IP/hostname (required for --remote)"
       echo "  STAGING_USER      SSH username (default: root)"
       echo "  STAGING_PATH      Project dir on VM (default: /root/ups)"
@@ -77,6 +81,23 @@ if $TEST_MODE; then
   STAGING_PATH="${TEST_PATH:-/root/ups}"
   REMOTE_MODE=true
   info "Test VM mode: ${STAGING_USER}@${STAGING_HOST} (${STAGING_PATH})"
+elif $PROD_MODE; then
+  if [[ -f "$PROJECT_ROOT/.env.production" ]]; then
+    info "Loading .env.production"
+    set -a
+    # shellcheck disable=SC1091
+    . "$PROJECT_ROOT/.env.production"
+    set +a
+  fi
+  STAGING_HOST="${PROD_HOST:-$STAGING_HOST}"
+  STAGING_USER="${PROD_USER:-$STAGING_USER}"
+  STAGING_PATH="${PROD_PATH:-$STAGING_PATH}"
+  STAGING_SSH_KEY="${PROD_SSH_KEY:-$STAGING_SSH_KEY}"
+  STAGING_SSH_PORT="${PROD_SSH_PORT:-$STAGING_SSH_PORT}"
+  if [[ -z "$STAGING_HOST" ]]; then
+    die "PROD_HOST is required for --prod mode. Set it or use .env.production."
+  fi
+  info "Production VM mode: ${STAGING_USER}@${STAGING_HOST} (${STAGING_PATH})"
 elif $REMOTE_MODE; then
   if [[ -f "$PROJECT_ROOT/.env.staging" ]]; then
     info "Loading .env.staging"
@@ -187,6 +208,8 @@ if ! $FORCE_MODE; then
   echo ""
   if $TEST_MODE; then
     echo "  Target: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
+  elif $PROD_MODE; then
+    echo "  Target: ${STAGING_USER}@${STAGING_HOST} (PRODUCTION VM)"
   elif $REMOTE_MODE; then
     echo "  Target: ${STAGING_USER}@${STAGING_HOST} (STAGING VM)"
   else
@@ -341,6 +364,8 @@ success "api service started"
 success "Restore complete!"
 if $TEST_MODE; then
   info "Restored on: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
+elif $PROD_MODE; then
+  info "Restored on: ${STAGING_USER}@${STAGING_HOST} (PRODUCTION VM)"
 elif $REMOTE_MODE; then
   info "Restored on: ${STAGING_USER}@${STAGING_HOST} (STAGING VM)"
 else

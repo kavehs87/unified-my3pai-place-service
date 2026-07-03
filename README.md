@@ -2,7 +2,7 @@
 
 > Unified data store and query API for tourism/POI entities across multiple import sources.
 
-**Status:** Data collection phase — not yet in production.
+**Status:** Production — `212.227.171.22` (16 CPU / 8 GB RAM)
 
 ## Overview
 
@@ -10,7 +10,7 @@ Provider-agnostic PostgreSQL + PostGIS data store with a REST API for tourism, P
 
 **This is a read-only data store + query API.** External importers write data. This project does NOT fetch, scrape, or import data.
 
-### Data Inventory (Staging)
+### Data Inventory (Production)
 
 | Source | Entities | Classifications | Media | Notes |
 |--------|----------|-----------------|-------|-------|
@@ -19,7 +19,8 @@ Provider-agnostic PostgreSQL + PostGIS data store with a REST API for tourism, P
 | tourpedia | 107,938 | 0 | 0 | `tourpedia_*` attributes, external links, photos |
 | swiss_dmo | 8,177 | 52,463 | 13,020 | Only source with classifications + media |
 | dzt | 76,386 | 0 | 0 | Empty attributes, poor data quality |
-| **Total** | **1,203,022** | **52,463** | **13,020** | *as of 2026-07-01* |
+| my3pai | 248,385 | 0 | 0 | LLM-rephrased from rexby source |
+| **Total** | **1,352,030** | **52,463** | **13,020** | *as of 2026-07-04* |
 
 ### Architecture
 
@@ -162,9 +163,9 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 | `RATE_LIMIT_MAX_REQUESTS` | `1000` | Max requests per window per IP |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate limit window in seconds |
 | `TRUST_PROXY_HEADERS` | `true` | Use `X-Forwarded-For` for client IP |
-| `POOL_SIZE` | `10` | DB connection pool size per worker (staging: 20) |
-| `MAX_OVERFLOW` | `5` | DB max overflow per worker (staging: 10) |
-| `QUERY_TIMEOUT_SECONDS` | `10.0` | Read query timeout (staging: 30) |
+| `POOL_SIZE` | `10` | DB connection pool size per worker (production: 20) |
+| `MAX_OVERFLOW` | `5` | DB max overflow per worker (production: 10) |
+| `QUERY_TIMEOUT_SECONDS` | `10.0` | Read query timeout (production: 30) |
 | `REQUEST_TIMEOUT_SECONDS` | `30.0` | HTTP request timeout |
 | `SLOW_REQUEST_THRESHOLD_MS` | `500.0` | Log warning for requests exceeding this |
 | `ALLOWED_ORIGINS` | `*` | CORS allowed origins |
@@ -172,27 +173,77 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 
 ## Deployment
 
-### Staging
+### Infrastructure
+
+| Environment | Host | Resources | Path |
+|-------------|------|-----------|------|
+| Test | `10.0.1.8` | — | `/root/ups` |
+| Staging | `10.0.2.10` | — | `/root/ups` |
+| **Production** | `212.227.171.22` | **16 CPU / 8 GB RAM** | `/root/ups` |
+
+### Production Resource Allocation
+
+| Service | CPU | RAM | Workers |
+|---------|-----|-----|---------|
+| PostGIS | 8 | 4 GB | — |
+| API | 4 | 2 GB | 8 (Uvicorn) |
+| Redis | — | 1.5 GB (1 GB cache) | — |
+| OS/Reserved | — | ~0.5 GB | — |
+
+### Deploy Code Changes
 
 ```bash
-# SSH to staging VM
-ssh root@10.0.2.10
+# Deploy to any environment (handles rsync + compose file + docker build)
+./scripts/deploy.sh --test        # test VM (10.0.1.8)
+./scripts/deploy.sh --staging     # staging VM (10.0.2.10)
+./scripts/deploy.sh --prod        # production VM (212.227.171.22)
 
-# SSH tunnel to staging DB (from local machine)
-ssh -L 5432:localhost:5432 root@10.0.2.10
-
-# Deploy code changes (requires Docker rebuild — not volume-mounted)
-scp -r src/ root@10.0.2.10:/tmp/dmo-src/
-ssh root@10.0.2.10 "cp -r /tmp/dmo-src/* /root/ups/src/ && cd /root/ups && docker compose build api && docker compose up -d --force-recreate api"
+# Options
+./scripts/deploy.sh --prod --dry-run    # preview changes
+./scripts/deploy.sh --prod --sync-only  # upload files only
+./scripts/deploy.sh --prod --no-migrate # skip Alembic migrations
 ```
 
-### Production
+Each deploy selects the correct compose file (`docker-compose.{test,staging,prod}.yml`) and deploys it as `docker-compose.yml` on the target VM. Environment-specific resource limits are isolated — deploying to one environment never affects another.
+
+### Backup & Restore
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
+# Backup from any environment
+./scripts/db-backup.sh                    # local
+./scripts/db-backup.sh --test             # test VM
+./scripts/db-backup.sh --remote           # staging VM (loads .env.staging)
+./scripts/db-backup.sh --prod             # production VM (loads .env.production)
+
+# Restore to any environment
+./scripts/db-restore.sh --list            # list available backups
+./scripts/db-restore.sh --test backups/YYYY-MM-DD_HHMMSS/dump.dump
+./scripts/db-restore.sh --remote backups/YYYY-MM-DD_HHMMSS/dump.dump
+./scripts/db-restore.sh --prod backups/YYYY-MM-DD_HHMMSS/dump.dump
+
+# Restore specific backup file
+./scripts/db-restore.sh --prod --force backups/after-rephrase/dump.dump
 ```
 
-Multi-stage Docker build with `uv` lockfile, Alembic migrations, Uvicorn (4 workers), health checks.
+### Environment Config Files
+
+| File | Purpose |
+|------|---------|
+| `.env.template` | Development defaults |
+| `.env.test` | Test VM SSH config |
+| `.env.staging` | Staging VM SSH config |
+| `.env.production` | Production VM SSH config |
+
+### Compose Files
+
+| File | Deployed As | Test | Staging | Production |
+|------|-------------|------|---------|------------|
+| `docker-compose.yml` | — (local dev) | — | — | — |
+| `docker-compose.test.yml` | `docker-compose.yml` | 4C/4G | — | — |
+| `docker-compose.staging.yml` | `docker-compose.yml` | — | 4C/3G | — |
+| `docker-compose.prod.yml` | `docker-compose.yml` | — | — | 16C/8G |
+
+Multi-stage Docker build with `uv` lockfile, Alembic migrations, Uvicorn (8 workers), health checks.
 
 ## Testing
 
@@ -488,7 +539,7 @@ DATABASE_URL=postgresql+asyncpg://postgres:<password>@db:5432/dmo
 DATABASE_URL_SYNC=postgresql+psycopg2://postgres:<password>@db:5432/dmo
 REDIS_URL=redis://redis:6379/0
 
-# Connection pool — tuned for 4 CPU / 3G RAM
+# Connection pool — tuned for 16 CPU / 8G RAM, 8 API workers
 POOL_SIZE=20
 MAX_OVERFLOW=10
 QUERY_TIMEOUT_SECONDS=30
