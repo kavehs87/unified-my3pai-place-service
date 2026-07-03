@@ -221,11 +221,29 @@ class RephraseFromSource(AdminScript):
                 cleaned = re.sub(r"\n?```$", "", cleaned)
             
             # Skip reasoning content - look for JSON object
-            # Models like DeepSeek put reasoning before the actual JSON
+            # Models like DeepSeek sometimes put reasoning before the actual JSON
             if not cleaned.startswith("{"):
+                # Find the first { which should be the start of JSON
                 start = cleaned.find("{")
                 if start != -1:
-                    cleaned = cleaned[start:]
+                    # Find the matching closing }
+                    brace_count = 0
+                    end = -1
+                    for i in range(start, len(cleaned)):
+                        if cleaned[i] == "{":
+                            brace_count += 1
+                        elif cleaned[i] == "}":
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end = i
+                                break
+                    if end != -1:
+                        cleaned = cleaned[start:end+1]
+                    else:
+                        cleaned = cleaned[start:]
+                else:
+                    # No JSON found - this is pure reasoning content
+                    raise ValueError("No JSON found in response (reasoning only)")
             
             # Try parsing as-is first
             try:
@@ -272,7 +290,7 @@ class RephraseFromSource(AdminScript):
             
             raise
             
-        except (json.JSONDecodeError, AttributeError) as e:
+        except (json.JSONDecodeError, AttributeError, ValueError) as e:
             logger.error(
                 "rephrase_json_parse_error",
                 error=str(e),
@@ -306,22 +324,47 @@ class RephraseFromSource(AdminScript):
                 description=entity_data["orig_description"],
             )
             
-            # Call LLM
-            try:
-                response = await self._call_llm(llm, prompt, llm_temperature, max_retries=DEFAULT_MAX_RETRIES)
-            except Exception as e:
+            # Call LLM with retries for reasoning-only responses
+            response = None
+            for attempt in range(DEFAULT_MAX_RETRIES + 1):
+                try:
+                    response = await self._call_llm(llm, prompt, llm_temperature, max_retries=1)
+                    # Try to parse - if it fails with reasoning error, retry
+                    try:
+                        rephrased = await self._parse_llm_response(response)
+                        break  # Success
+                    except ValueError as e:
+                        if "reasoning only" in str(e) and attempt < DEFAULT_MAX_RETRIES:
+                            logger.warning("rephrase_reasoning_retry", attempt=attempt + 1)
+                            await asyncio.sleep(1)
+                            continue
+                        raise
+                except Exception as e:
+                    if attempt < DEFAULT_MAX_RETRIES:
+                        logger.warning("rephrase_llm_retry", error=str(e), attempt=attempt + 1)
+                        await asyncio.sleep(1)
+                        continue
+                    return {
+                        "success": False,
+                        "entity_id": None,
+                        "error": f"LLM error: {str(e)}",
+                        "quality": None,
+                        "rephrased": None,
+                    }
+            
+            if response is None:
                 return {
                     "success": False,
                     "entity_id": None,
-                    "error": f"LLM error: {str(e)}",
+                    "error": "No valid response after retries",
                     "quality": None,
                     "rephrased": None,
                 }
             
-            # Parse JSON
+            # Parse JSON (already validated above, but handle edge cases)
             try:
                 rephrased = await self._parse_llm_response(response)
-            except (json.JSONDecodeError, AttributeError) as e:
+            except (json.JSONDecodeError, AttributeError, ValueError) as e:
                 return {
                     "success": False,
                     "entity_id": None,
