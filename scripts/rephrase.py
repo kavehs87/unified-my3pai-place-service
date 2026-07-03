@@ -48,6 +48,7 @@ async def main():
     parser.add_argument("--batch-size", type=int, default=5, help="LLM batch size")
     parser.add_argument("--db-batch-size", type=int, default=50, help="DB commit batch size")
     parser.add_argument("--temperature", type=float, default=1.0, help="LLM temperature")
+    parser.add_argument("--concurrency", type=int, default=5, help="Concurrent LLM calls (3-5 recommended)")
     parser.add_argument("--entity-id", default="", help="Target specific entity UUID")
     parser.add_argument("--db-url", default=None, help="Database URL (overrides .env)")
 
@@ -86,13 +87,72 @@ async def main():
     )
 
     # Setup LLM
+    # Try admin settings first, fall back to OpenCode Zen
     admin_settings = await load_settings()
     llm = LLMClient.from_settings(admin_settings)
+    
     if not llm:
-        log("ERROR: LLM not configured. Set llm_endpoint and llm_api_key in admin settings.")
-        await engine.dispose()
-        sys.exit(1)
-    log(f"LLM: {llm.endpoint} / {llm.model}")
+        # Fall back to OpenCode Zen with built-in API key
+        from dmo.admin_scripts.rephrase_from_source import (
+            OPENCODE_ZEN_API_KEY,
+            OPENCODE_ZEN_BASE_URL,
+            DEFAULT_MODEL,
+            DEFAULT_MAX_TOKENS,
+        )
+        log(f"Using OpenCode Zen LLM: {DEFAULT_MODEL}")
+        log(f"API Key: {OPENCODE_ZEN_API_KEY[:10]}...")
+        
+        # Create a simple LLM client for OpenCode Zen
+        import httpx
+        
+        class OpenCodeZenLLM:
+            def __init__(self, api_key, base_url, model, max_tokens):
+                self.api_key = api_key
+                self.base_url = base_url
+                self.model = model
+                self.max_tokens = max_tokens
+            
+            async def chat(self, messages, temperature=1.0, max_tokens=None):
+                import httpx
+                
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "messages": messages,
+                            "temperature": temperature,
+                            "max_tokens": max_tokens or self.max_tokens,
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    msg = data["choices"][0]["message"]
+                    
+                    # Use content field (reasoning_content is separate)
+                    content = msg.get("content", "").strip()
+                    
+                    # If content is empty or looks like reasoning, skip it
+                    if not content:
+                        raise ValueError("Empty content from LLM")
+                    
+                    # Debug: log first 100 chars
+                    log(f"LLM response starts with: {repr(content[:100])}")
+                    
+                    return content
+        
+        llm = OpenCodeZenLLM(
+            api_key=OPENCODE_ZEN_API_KEY,
+            base_url=OPENCODE_ZEN_BASE_URL,
+            model=DEFAULT_MODEL,
+            max_tokens=DEFAULT_MAX_TOKENS,
+        )
+    
+    log(f"LLM: {llm}")
 
     db = AsyncSession(engine)
 
@@ -120,6 +180,7 @@ async def main():
             "batch_size": args.batch_size,
             "db_batch_size": args.db_batch_size,
             "llm_temperature": str(args.temperature),
+            "concurrency": args.concurrency,
             "entity_id": args.entity_id,
         }
 

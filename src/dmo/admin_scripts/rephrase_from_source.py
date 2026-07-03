@@ -1,11 +1,19 @@
+import asyncio
 import json
 import os
 import re
 from contextlib import suppress
 
+from sqlalchemy import text
 from dmo.admin_scripts.base import AdminScript, ScriptMeta, ScriptParameter, ScriptResult
 
 logger = __import__("structlog").get_logger(__name__)
+
+OPENCODE_ZEN_API_KEY = "sk-l1Kyv57RsQ0QnUqrRW0kJGtCqj36jcXg0V4Tz6Xqph6AmCZxQHkCBzugnJkoyn0G"
+OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1"
+DEFAULT_MODEL = "deepseek-v4-flash"
+DEFAULT_MAX_TOKENS = 4096
+DEFAULT_MAX_RETRIES = 2
 
 
 def _make_slug(text: str) -> str:
@@ -17,6 +25,50 @@ def _make_slug(text: str) -> str:
 
 def _strip_html(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
+
+
+def _validate_rephrased(entity_data: dict, rephrased: dict) -> dict:
+    """Validate rephrased output meets quality thresholds.
+    
+    Returns: {"valid": bool, "issues": [str], "name_length": int, "summary_length": int, "description_length": int}
+    """
+    issues = []
+    
+    name = rephrased.get("rephrased_name", "") or ""
+    summary = rephrased.get("rephrased_summary", "") or ""
+    description = rephrased.get("rephrased_description", "") or ""
+    
+    name_length = len(name)
+    summary_length = len(summary)
+    description_length = len(description)
+    
+    # Name checks
+    if not name:
+        issues.append("empty_name")
+    elif name_length < 20:
+        issues.append(f"name_too_short ({name_length} chars)")
+    elif name_length > 200:
+        issues.append(f"name_too_long ({name_length} chars)")
+    
+    # Summary checks
+    if not summary:
+        issues.append("empty_summary")
+    elif summary_length < 20:
+        issues.append(f"summary_too_short ({summary_length} chars)")
+    
+    # Description checks
+    if not description:
+        issues.append("empty_description")
+    elif description_length < 50:
+        issues.append(f"description_too_short ({description_length} chars)")
+    
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "name_length": name_length,
+        "summary_length": summary_length,
+        "description_length": description_length,
+    }
 
 
 class RephraseFromSource(AdminScript):
@@ -80,6 +132,13 @@ class RephraseFromSource(AdminScript):
                 description="LLM creativity (0.0-2.0, higher = more different)",
             ),
             ScriptParameter(
+                name="concurrency",
+                type="int",
+                label="LLM Concurrency",
+                default=5,
+                description="Concurrent LLM calls (3-5 recommended)",
+            ),
+            ScriptParameter(
                 name="entity_id",
                 type="text",
                 label="Entity ID",
@@ -99,9 +158,9 @@ class RephraseFromSource(AdminScript):
 
     USER_PROMPT_TEMPLATE = (
         "Rules:\n"
-        "- Name: catchy but accurate (max 100 chars)\n"
-        "- Summary: 1-2 sentences capturing the essence\n"
-        "- Description: 2-4 paragraphs, engaging and informative. "
+        "- Name: catchy but accurate (50-100 chars)\n"
+        "- Summary: 1 sentence (50-150 chars)\n"
+        "- Description: 1-2 paragraphs (200-400 chars total). "
         "Strip any HTML tags. Write in plain text.\n"
         "- If any field is missing/empty, omit it from the output\n\n"
         "Return ONLY valid JSON, no markdown, no explanation:\n"
@@ -123,6 +182,298 @@ class RephraseFromSource(AdminScript):
         if os.path.exists(self.STOP_FILE):
             os.remove(self.STOP_FILE)
 
+    async def _call_llm(self, llm, prompt: str, temperature: float, max_retries: int = 3) -> str:
+        """Call LLM with error handling and retries."""
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = await llm.chat(
+                    [
+                        {"role": "system", "content": self.SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=temperature,
+                    max_tokens=DEFAULT_MAX_TOKENS,
+                )
+                if not response or not response.strip():
+                    if attempt < max_retries - 1:
+                        logger.warning("rephrase_empty_response_retry", attempt=attempt + 1, max_retries=max_retries)
+                        await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                        continue
+                    raise ValueError("Empty response from LLM after retries")
+                return response
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning("rephrase_llm_error_retry", error=str(e), attempt=attempt + 1, max_retries=max_retries)
+                    await asyncio.sleep(1 * (attempt + 1))
+                    continue
+                logger.error("rephrase_llm_error", error=str(e), exc_info=True)
+                raise last_error
+        raise last_error or ValueError("Unexpected: no retries attempted")
+
+    async def _parse_llm_response(self, response: str) -> dict:
+        """Parse LLM JSON response with error handling."""
+        try:
+            cleaned = response.strip()
+            if cleaned.startswith("```"):
+                cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned)
+                cleaned = re.sub(r"\n?```$", "", cleaned)
+            
+            # Skip reasoning content - look for JSON object
+            # Models like DeepSeek put reasoning before the actual JSON
+            if not cleaned.startswith("{"):
+                start = cleaned.find("{")
+                if start != -1:
+                    cleaned = cleaned[start:]
+            
+            # Try parsing as-is first
+            try:
+                rephrased = json.loads(cleaned)
+                return rephrased
+            except json.JSONDecodeError:
+                pass
+            
+            # If that fails, try to fix common issues with newlines in strings
+            fixed = []
+            in_string = False
+            escape_next = False
+            
+            for char in cleaned:
+                if escape_next:
+                    fixed.append(char)
+                    escape_next = False
+                    continue
+                
+                if char == "\\" and in_string:
+                    fixed.append(char)
+                    escape_next = True
+                    continue
+                
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    fixed.append(char)
+                    continue
+                
+                if char == "\n" and in_string:
+                    fixed.append("\\n")
+                    continue
+                
+                fixed.append(char)
+            
+            fixed_cleaned = "".join(fixed)
+            
+            # Try parsing again with fixed newlines
+            try:
+                rephrased = json.loads(fixed_cleaned)
+                return rephrased
+            except json.JSONDecodeError:
+                pass
+            
+            raise
+            
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.error(
+                "rephrase_json_parse_error",
+                error=str(e),
+                raw_response=response[:500],
+            )
+            raise
+
+    async def _process_entity(
+        self,
+        entity_data: dict,
+        llm,
+        db,
+        target_source: str,
+        prefix: str,
+        dry_run: bool,
+        semaphore: asyncio.Semaphore,
+        llm_temperature: float,
+    ) -> dict:
+        """Process a single entity with LLM call and DB insert.
+        
+        Returns: {"success": bool, "entity_id": str, "error": str, "quality": dict, "rephrased": dict}
+        """
+        orig_source_id = entity_data["orig_source_id"]
+        new_source_id = f"{prefix}{orig_source_id}"
+        
+        async with semaphore:
+            # Build prompt
+            prompt = self.USER_PROMPT_TEMPLATE.format(
+                name=entity_data["orig_name"],
+                summary=entity_data["orig_summary"],
+                description=entity_data["orig_description"],
+            )
+            
+            # Call LLM
+            try:
+                response = await self._call_llm(llm, prompt, llm_temperature, max_retries=DEFAULT_MAX_RETRIES)
+            except Exception as e:
+                return {
+                    "success": False,
+                    "entity_id": None,
+                    "error": f"LLM error: {str(e)}",
+                    "quality": None,
+                    "rephrased": None,
+                }
+            
+            # Parse JSON
+            try:
+                rephrased = await self._parse_llm_response(response)
+            except (json.JSONDecodeError, AttributeError) as e:
+                return {
+                    "success": False,
+                    "entity_id": None,
+                    "error": f"JSON parse error: {str(e)}",
+                    "quality": None,
+                    "rephrased": None,
+                }
+            
+            # Validate
+            new_name = rephrased.get("rephrased_name", "") or ""
+            new_summary = rephrased.get("rephrased_summary", "") or ""
+            new_description = rephrased.get("rephrased_description", "") or ""
+            
+            quality = _validate_rephrased(entity_data, rephrased)
+            
+            if not new_name:
+                return {
+                    "success": False,
+                    "entity_id": None,
+                    "error": "empty_name",
+                    "quality": quality,
+                    "rephrased": rephrased,
+                }
+            
+            if not dry_run:
+                # Check for collision
+                collision_check = text(
+                    "SELECT 1 FROM entities "
+                    "WHERE source = :target AND source_id = :sid LIMIT 1"
+                )
+                collision = await db.execute(
+                    collision_check,
+                    {"target": target_source, "sid": new_source_id},
+                )
+                if collision.scalar():
+                    return {
+                        "success": False,
+                        "entity_id": None,
+                        "error": f"collision: {new_source_id}",
+                        "quality": quality,
+                        "rephrased": rephrased,
+                    }
+                
+                # Insert entity via ORM
+                from dmo.models.database import Entity
+                
+                entity = Entity(
+                    source=target_source,
+                    source_id=new_source_id,
+                    source_url=entity_data["orig_source_url"],
+                    name=new_name,
+                    slug=_make_slug(new_name),
+                    summary=new_summary if new_summary else None,
+                    description=_strip_html(new_description) if new_description else None,
+                    description_format="text",
+                    place_type=entity_data["orig_place_type"],
+                    secondary_types=entity_data["orig_secondary_types"],
+                    latitude=entity_data["orig_lat"],
+                    longitude=entity_data["orig_lon"],
+                    country=entity_data["orig_country"],
+                    region=entity_data["orig_region"],
+                    locality=entity_data["orig_locality"],
+                    region_names=entity_data["orig_region_names"],
+                    thumbnail_url=entity_data["orig_thumbnail"],
+                    website=entity_data["orig_website"],
+                    is_free=entity_data["orig_is_free"] or False,
+                    is_open=entity_data["orig_is_open"],
+                    opening_hours=entity_data["orig_opening_hours"],
+                    business_status=entity_data["orig_business_status"],
+                    phone=entity_data["orig_phone"],
+                    email=entity_data["orig_email"],
+                    access_type=entity_data["orig_access_type"],
+                    recommended_season=entity_data["orig_season"],
+                    is_barrier_free=entity_data["orig_barrier_free"] or False,
+                    rating=entity_data["orig_rating"],
+                    favorite_count=entity_data["orig_fav_count"] or 0,
+                    currency=entity_data["orig_currency"],
+                    price_level=entity_data["orig_price_level"],
+                    attributes=entity_data["orig_attributes"],
+                    is_active=True,
+                )
+                
+                db.add(entity)
+                await db.flush()
+                
+                # Set PostGIS location if coordinates present
+                if entity_data["orig_lat"] is not None and entity_data["orig_lon"] is not None:
+                    await db.execute(
+                        text(
+                            "UPDATE entities SET location = ST_SetSRID("
+                            "ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid"
+                        ).bindparams(
+                            lat=entity_data["orig_lat"],
+                            lon=entity_data["orig_lon"],
+                            eid=entity.id,
+                        )
+                    )
+                
+                # Record in state table
+                await db.execute(
+                    text(
+                        "INSERT INTO my3pai_rephrased (source, source_id, entity_id) "
+                        "VALUES (:source, :sid, :eid)"
+                    ),
+                    {
+                        "source": target_source,
+                        "sid": new_source_id,
+                        "eid": str(entity.id),
+                    },
+                )
+                
+                return {
+                    "success": True,
+                    "entity_id": str(entity.id),
+                    "error": None,
+                    "quality": quality,
+                    "rephrased": rephrased,
+                }
+            else:
+                return {
+                    "success": True,
+                    "entity_id": None,
+                    "error": None,
+                    "quality": quality,
+                    "rephrased": rephrased,
+                }
+
+    def _print_sample_outputs(self, samples: list[dict]):
+        """Print 5 sample outputs for visual review."""
+        print("\n=== Sample Output (Concurrency=5, Dry-Run) ===\n")
+        
+        for i, sample in enumerate(samples[:5], 1):
+            print(f"Entity {i}: {sample['original_name']}")
+            print(f"  Original Summary: {sample['original_summary'][:80]}...")
+            print(f"  Rephrased Name: {sample['rephrased_name']}")
+            print(f"  Rephrased Summary: {sample['rephrased_summary'][:80]}...")
+            print(f"  Quality: {'✅ Good' if sample['valid'] else '⚠️ Issues'}")
+            if sample['issues']:
+                print(f"  Issues: {', '.join(sample['issues'])}")
+            print()
+        
+        print("=== Summary ===")
+        valid_count = sum(1 for s in samples if s["valid"])
+        print(f"- {len(samples)} entities processed")
+        print(f"- {valid_count}/{len(samples)} passed quality checks")
+        print()
+        
+        if valid_count == len(samples):
+            print("✅ All checks passed — proceed to live run?")
+        else:
+            print("⚠️ Some quality issues detected — review before proceeding")
+
     async def run(self, params, db, llm=None, progress_callback=None) -> ScriptResult:
         source = params.get("source", "*")
         target_source = params.get("target_source", "my3pai")
@@ -131,6 +482,7 @@ class RephraseFromSource(AdminScript):
         dry_run = params.get("dry_run", True)
         db_batch_size = int(params.get("db_batch_size", 50))
         llm_temperature = float(params.get("llm_temperature", 1.0))
+        concurrency = int(params.get("concurrency", 5))
         target_entity_id = params.get("entity_id", "")
 
         if not llm:
@@ -179,6 +531,8 @@ class RephraseFromSource(AdminScript):
         errors = 0
         stop_requested = False
         seen_source_ids: set[str] = set(processed_source_ids)
+        quality_results: list[dict] = []
+        sample_outputs: list[dict] = []
 
         try:
             while True:
@@ -212,241 +566,132 @@ class RephraseFromSource(AdminScript):
                 if not rows:
                     break
 
-                batch_created = 0
+                # Prepare entity batch
+                entity_batch = []
                 for row in rows:
-                    if await self._check_stop():
-                        stop_requested = True
-                        break
-
                     orig_source_id = row[2]
                     new_source_id = f"{prefix}{orig_source_id}"
-
+                    
                     # Skip if already seen (resume support)
                     if new_source_id in seen_source_ids:
                         processed += 1
                         continue
-
+                    
                     seen_source_ids.add(new_source_id)
-                    orig_name = row[3] or ""
-                    orig_summary = row[4] or ""
-                    orig_description = row[5] or ""
-                    orig_place_type = row[7] or ""
-                    orig_secondary_types = row[8]
-                    orig_lat = row[9]
-                    orig_lon = row[10]
-                    orig_country = row[11]
-                    orig_region = row[12]
-                    orig_locality = row[13]
-                    orig_region_names = row[14]
-                    orig_attributes = row[15] or {}
-                    orig_source_url = row[16]
-                    orig_thumbnail = row[17]
-                    orig_website = row[18]
-                    orig_is_free = row[19]
-                    orig_is_open = row[20]
-                    orig_opening_hours = row[21]
-                    orig_business_status = row[22]
-                    orig_phone = row[23]
-                    orig_email = row[24]
-                    orig_access_type = row[25]
-                    orig_season = row[26]
-                    orig_barrier_free = row[27]
-                    orig_rating = row[28]
-                    orig_fav_count = row[29]
-                    orig_currency = row[30]
-                    orig_price_level = row[31]
+                    
+                    entity_batch.append({
+                        "orig_source_id": orig_source_id,
+                        "new_source_id": new_source_id,
+                        "orig_name": row[3] or "",
+                        "orig_summary": row[4] or "",
+                        "orig_description": row[5] or "",
+                        "orig_place_type": row[7] or "",
+                        "orig_secondary_types": row[8],
+                        "orig_lat": row[9],
+                        "orig_lon": row[10],
+                        "orig_country": row[11],
+                        "orig_region": row[12],
+                        "orig_locality": row[13],
+                        "orig_region_names": row[14],
+                        "orig_attributes": row[15] or {},
+                        "orig_source_url": row[16],
+                        "orig_thumbnail": row[17],
+                        "orig_website": row[18],
+                        "orig_is_free": row[19],
+                        "orig_is_open": row[20],
+                        "orig_opening_hours": row[21],
+                        "orig_business_status": row[22],
+                        "orig_phone": row[23],
+                        "orig_email": row[24],
+                        "orig_access_type": row[25],
+                        "orig_season": row[26],
+                        "orig_barrier_free": row[27],
+                        "orig_rating": row[28],
+                        "orig_fav_count": row[29],
+                        "orig_currency": row[30],
+                        "orig_price_level": row[31],
+                    })
 
-                    # Check for collision
-                    if not dry_run:
-                        collision_check = text(
-                            "SELECT 1 FROM entities "
-                            "WHERE source = :target AND source_id = :sid LIMIT 1"
-                        )
-                        collision = await db.execute(
-                            collision_check,
-                            {"target": target_source, "sid": new_source_id},
-                        )
-                        if collision.scalar():
-                            await db.rollback()
-                            return ScriptResult(
-                                success=False,
-                                message=(
-                                    f"Source ID collision: {target_source}/{new_source_id} "
-                                    f"already exists. Aborting."
-                                ),
-                                affected_count=created,
-                                details=[{"collision": new_source_id}],
-                            )
+                if not entity_batch:
+                    break
 
-                    # Build prompt
-                    prompt = self.USER_PROMPT_TEMPLATE.format(
-                        name=orig_name,
-                        summary=orig_summary,
-                        description=orig_description,
+                # Process in parallel
+                semaphore = asyncio.Semaphore(concurrency)
+                tasks = [
+                    self._process_entity(
+                        entity,
+                        llm,
+                        db,
+                        target_source,
+                        prefix,
+                        dry_run,
+                        semaphore,
+                        llm_temperature,
                     )
+                    for entity in entity_batch
+                ]
 
-                    try:
-                        response = await llm.chat(
-                            [
-                                {"role": "system", "content": self.SYSTEM_PROMPT},
-                                {"role": "user", "content": prompt},
-                            ],
-                            temperature=llm_temperature,
-                            max_tokens=10240,
-                        )
-                    except Exception as e:
+                # Gather results
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Count successes/errors
+                batch_created = 0
+                for result in results:
+                    if isinstance(result, Exception):
                         errors += 1
                         logger.error(
-                            "rephrase_llm_error",
-                            source_id=orig_source_id,
-                            error=str(e),
+                            "rephrase_entity_error",
+                            error=str(result),
+                            exc_info=True,
                         )
-                        if progress_callback:
-                            pct = (processed / total_count) * 100
-                            await progress_callback(
-                                pct,
-                                f"Processed {processed}/{total_count} "
-                                f"(created: {created}, errors: {errors})",
+                    elif isinstance(result, dict):
+                        if result.get("success"):
+                            created += 1
+                            batch_created += 1
+                        else:
+                            errors += 1
+                            error_msg = result.get("error", "unknown")
+                            logger.warning(
+                                "rephrase_entity_failed",
+                                error=error_msg,
                             )
-                        continue
-
-                    # Parse JSON response
-                    try:
-                        cleaned = response.strip()
-                        if cleaned.startswith("```"):
-                            cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned)
-                            cleaned = re.sub(r"\n?```$", "", cleaned)
-                        rephrased = json.loads(cleaned)
-                    except (json.JSONDecodeError, AttributeError) as e:
-                        errors += 1
-                        logger.error(
-                            "rephrase_json_parse_error",
-                            source_id=orig_source_id,
-                            error=str(e),
-                            raw_response=response[:200],
-                        )
-                        if progress_callback:
-                            pct = (processed / total_count) * 100
-                            await progress_callback(
-                                pct,
-                                f"Processed {processed}/{total_count} "
-                                f"(created: {created}, errors: {errors})",
-                            )
-                        continue
-
-                    new_name = rephrased.get("rephrased_name", "").strip()
-                    new_summary = rephrased.get("rephrased_summary", "").strip()
-                    new_description = rephrased.get("rephrased_description", "").strip()
-
-                    if not new_name:
+                        
+                        # Track quality for all results (success or fail)
+                        if result.get("quality"):
+                            quality_results.append(result["quality"])
+                        
+                        if dry_run and len(sample_outputs) < 5:
+                            rephrased = result.get("rephrased", {})
+                            quality = result.get("quality", {})
+                            sample_outputs.append({
+                                "original_name": rephrased.get("rephrased_name", "") if rephrased else "",
+                                "original_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
+                                "rephrased_name": rephrased.get("rephrased_name", "") if rephrased else "",
+                                "rephrased_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
+                                "valid": quality.get("valid", False) if quality else False,
+                                "issues": quality.get("issues", []) if quality else [],
+                            })
+                    else:
                         errors += 1
                         logger.warning(
-                            "rephrase_empty_name",
-                            source_id=orig_source_id,
+                            "rephrase_entity_failed",
+                            error=str(result),
                         )
-                        if progress_callback:
-                            pct = (processed / total_count) * 100
-                            await progress_callback(
-                                pct,
-                                f"Processed {processed}/{total_count} "
-                                f"(created: {created}, errors: {errors})",
-                            )
-                        continue
 
-                    new_slug = _make_slug(new_name)
-                    clean_description = _strip_html(new_description) if new_description else None
+                processed += len(entity_batch)
 
-                    if dry_run:
-                        created += 1
-                        batch_created += 1
-                        if progress_callback:
-                            pct = (processed / total_count) * 100
-                            await progress_callback(
-                                pct,
-                                f"Processed {processed}/{total_count} "
-                                f"(created: {created}, errors: {errors})",
-                            )
-                        continue
-
-                    # Insert entity via ORM
-                    from dmo.models.database import Entity
-
-                    entity = Entity(
-                        source=target_source,
-                        source_id=new_source_id,
-                        source_url=orig_source_url,
-                        name=new_name,
-                        slug=new_slug,
-                        summary=new_summary if new_summary else None,
-                        description=clean_description,
-                        description_format="text",
-                        place_type=orig_place_type,
-                        secondary_types=orig_secondary_types,
-                        latitude=orig_lat,
-                        longitude=orig_lon,
-                        country=orig_country,
-                        region=orig_region,
-                        locality=orig_locality,
-                        region_names=orig_region_names,
-                        thumbnail_url=orig_thumbnail,
-                        website=orig_website,
-                        is_free=orig_is_free or False,
-                        is_open=orig_is_open,
-                        opening_hours=orig_opening_hours,
-                        business_status=orig_business_status,
-                        phone=orig_phone,
-                        email=orig_email,
-                        access_type=orig_access_type,
-                        recommended_season=orig_season,
-                        is_barrier_free=orig_barrier_free or False,
-                        rating=orig_rating,
-                        favorite_count=orig_fav_count or 0,
-                        currency=orig_currency,
-                        price_level=orig_price_level,
-                        attributes=orig_attributes,
-                        is_active=True,
+                if progress_callback:
+                    pct = (processed / total_count) * 100
+                    await progress_callback(
+                        pct,
+                        f"Processed {processed}/{total_count} "
+                        f"(created: {created}, errors: {errors}, "
+                        f"concurrency: {concurrency})"
                     )
 
-                    db.add(entity)
-                    await db.flush()
-
-                    # Set PostGIS location if coordinates present
-                    if orig_lat is not None and orig_lon is not None:
-                        from sqlalchemy import text as sql_text
-
-                        await db.execute(
-                            sql_text(
-                                "UPDATE entities SET location = ST_SetSRID("
-                                "ST_MakePoint(:lon, :lat), 4326) WHERE id = :eid"
-                            ).bindparams(lat=orig_lat, lon=orig_lon, eid=entity.id)
-                        )
-
-                    # Record in state table
-                    await db.execute(
-                        text(
-                            "INSERT INTO my3pai_rephrased (source, source_id, entity_id) "
-                            "VALUES (:source, :sid, :eid)"
-                        ),
-                        {
-                            "source": target_source,
-                            "sid": new_source_id,
-                            "eid": str(entity.id),
-                        },
-                    )
-
-                    created += 1
-                    batch_created += 1
-
-                    if progress_callback:
-                        pct = (processed / total_count) * 100
-                        await progress_callback(
-                            pct,
-                            f"Processed {processed}/{total_count} "
-                            f"(created: {created}, errors: {errors})",
-                        )
-
-                if not dry_run:
-                    await db.commit()
+                # Print sample outputs for dry-run
+                if dry_run and len(sample_outputs) >= 5:
+                    self._print_sample_outputs(sample_outputs)
 
                 # Break if no new entities were created in this batch
                 if batch_created == 0 and processed > 0:
@@ -468,6 +713,25 @@ class RephraseFromSource(AdminScript):
         finally:
             if not dry_run:
                 await self._clear_stop()
+
+        # Quality check for dry-run
+        if dry_run and quality_results:
+            empty_names = sum(1 for q in quality_results if "empty_name" in q["issues"])
+            quality_failures = sum(1 for q in quality_results if not q["valid"])
+            failure_rate = quality_failures / len(quality_results) if quality_results else 0
+
+            if empty_names > 0 or failure_rate > 0.25:
+                logger.warning(
+                    "quality_check_failed",
+                    empty_names=empty_names,
+                    failure_rate=failure_rate,
+                )
+                return ScriptResult(
+                    success=False,
+                    message=f"Quality check failed: {empty_names} empty names, {failure_rate:.0%} failures",
+                    affected_count=created,
+                    details=[{"fallback": True}],
+                )
 
         if stop_requested:
             status_msg = "stopped"

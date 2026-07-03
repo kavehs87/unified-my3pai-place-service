@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from dmo.admin_scripts.rephrase_from_source import RephraseFromSource, _make_slug, _strip_html
+from dmo.admin_scripts.rephrase_from_source import (
+    RephraseFromSource,
+    _make_slug,
+    _strip_html,
+    _validate_rephrased,
+)
 
 
 @pytest.mark.asyncio
@@ -516,3 +521,310 @@ async def test_rephrase_empty_name_errors(session: AsyncSession):
     assert result.success is True
     assert result.affected_count == 0
     assert "errors: 1" in result.message
+
+
+@pytest.mark.asyncio
+async def test_validate_rephrased_good():
+    """Test quality validation with good output."""
+    rephrased = {
+        "rephrased_name": "This is a good name that meets the minimum length requirement",
+        "rephrased_summary": "This is a good summary that captures the essence of the place",
+        "rephrased_description": "This is a detailed description with enough content to pass validation. It has multiple paragraphs and provides comprehensive information about the tourism entity including location, features, and visitor tips.",
+    }
+    result = _validate_rephrased({}, rephrased)
+    assert result["valid"] is True
+    assert result["issues"] == []
+    assert result["name_length"] >= 50
+    assert result["summary_length"] >= 50
+    assert result["description_length"] >= 200
+
+
+@pytest.mark.asyncio
+async def test_validate_rephrased_empty_name():
+    """Test quality validation with empty name."""
+    rephrased = {
+        "rephrased_name": "",
+        "rephrased_summary": "Summary",
+        "rephrased_description": "Description",
+    }
+    result = _validate_rephrased({}, rephrased)
+    assert result["valid"] is False
+    assert "empty_name" in result["issues"]
+
+
+@pytest.mark.asyncio
+async def test_validate_rephrased_name_too_short():
+    """Test quality validation with name too short."""
+    rephrased = {
+        "rephrased_name": "Short",
+        "rephrased_summary": "Summary",
+        "rephrased_description": "Description",
+    }
+    result = _validate_rephrased({}, rephrased)
+    assert result["valid"] is False
+    assert any("name_too_short" in issue for issue in result["issues"])
+
+
+@pytest.mark.asyncio
+async def test_validate_rephrased_name_too_long():
+    """Test quality validation with name too long."""
+    rephrased = {
+        "rephrased_name": "x" * 200,
+        "rephrased_summary": "Summary",
+        "rephrased_description": "Description",
+    }
+    result = _validate_rephrased({}, rephrased)
+    assert result["valid"] is False
+    assert any("name_too_long" in issue for issue in result["issues"])
+
+
+@pytest.mark.asyncio
+async def test_validate_rephrased_summary_too_short():
+    """Test quality validation with summary too short."""
+    rephrased = {
+        "rephrased_name": "x" * 60,
+        "rephrased_summary": "Short",
+        "rephrased_description": "Description",
+    }
+    result = _validate_rephrased({}, rephrased)
+    assert result["valid"] is False
+    assert any("summary_too_short" in issue for issue in result["issues"])
+
+
+@pytest.mark.asyncio
+async def test_validate_rephrased_description_too_short():
+    """Test quality validation with description too short."""
+    rephrased = {
+        "rephrased_name": "x" * 60,
+        "rephrased_summary": "x" * 60,
+        "rephrased_description": "Short",
+    }
+    result = _validate_rephrased({}, rephrased)
+    assert result["valid"] is False
+    assert any("description_too_short" in issue for issue in result["issues"])
+
+
+@pytest.mark.asyncio
+async def test_rephrase_concurrency_parameter():
+    """Test that concurrency parameter is parsed correctly."""
+    from dmo.admin_scripts.registry import get_script
+
+    script = get_script("rephrase_from_source")
+    assert script is not None
+    param_names = [p.name for p in script.meta.parameters]
+    assert "concurrency" in param_names
+    
+    concurrency_param = next(p for p in script.meta.parameters if p.name == "concurrency")
+    assert concurrency_param.default == 5
+    assert concurrency_param.type == "int"
+
+
+@pytest.mark.asyncio
+async def test_rephrase_concurrency_3(session: AsyncSession):
+    """Test processing with concurrency=3."""
+    from dmo.models.database import Entity
+
+    # Create test entities
+    for i in range(5):
+        entity = Entity(
+            source="rexby",
+            source_id=f"concurrency_3_{i}",
+            name=f"Test Place {i}",
+            summary=f"Summary {i}",
+            description=f"Description {i}",
+            place_type="experience",
+            is_active=True,
+        )
+        session.add(entity)
+    await session.flush()
+
+    script = RephraseFromSource()
+    params = {
+        "source": "rexby",
+        "target_source": "my3pai",
+        "prefix": "rx:",
+        "max_entities": 5,
+        "dry_run": True,
+        "batch_size": 5,
+        "db_batch_size": 50,
+        "llm_temperature": "1.0",
+        "concurrency": 3,
+    }
+
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps(
+        {
+            "rephrased_name": "Fresh Name That Meets The Minimum Length Requirement Now",
+            "rephrased_summary": "Fresh Summary That Captures The Essence Of This Great Place",
+            "rephrased_description": "Fresh Description With Enough Content To Pass Validation. It Has Multiple Paragraphs And Provides Comprehensive Information About The Tourism Entity Including Location Features And Visitor Tips For Travelers.",
+        }
+    )
+
+    result = await script.run(params, session, llm=mock_llm)
+    assert result.success is True
+    assert result.affected_count == 5
+    assert "would create 5" in result.message
+
+
+@pytest.mark.asyncio
+async def test_rephrase_concurrency_5(session: AsyncSession):
+    """Test processing with concurrency=5."""
+    from dmo.models.database import Entity
+
+    # Create test entities
+    for i in range(10):
+        entity = Entity(
+            source="rexby",
+            source_id=f"concurrency_5_{i}",
+            name=f"Test Place {i}",
+            summary=f"Summary {i}",
+            description=f"Description {i}",
+            place_type="experience",
+            is_active=True,
+        )
+        session.add(entity)
+    await session.flush()
+
+    script = RephraseFromSource()
+    params = {
+        "source": "rexby",
+        "target_source": "my3pai",
+        "prefix": "rx:",
+        "max_entities": 10,
+        "dry_run": True,
+        "batch_size": 5,
+        "db_batch_size": 50,
+        "llm_temperature": "1.0",
+        "concurrency": 5,
+    }
+
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps(
+        {
+            "rephrased_name": "Fresh Name That Meets The Minimum Length Requirement Now",
+            "rephrased_summary": "Fresh Summary That Captures The Essence Of This Great Place",
+            "rephrased_description": "Fresh Description With Enough Content To Pass Validation. It Has Multiple Paragraphs And Provides Comprehensive Information About The Tourism Entity Including Location Features And Visitor Tips For Travelers.",
+        }
+    )
+
+    result = await script.run(params, session, llm=mock_llm)
+    assert result.success is True
+    assert result.affected_count == 10
+    assert "would create 10" in result.message
+
+
+@pytest.mark.asyncio
+async def test_rephrase_concurrency_with_errors(session: AsyncSession):
+    """Test processing with mixed successful and failed LLM calls."""
+    from dmo.models.database import Entity
+
+    # Create test entities
+    for i in range(5):
+        entity = Entity(
+            source="rexby",
+            source_id=f"concurrency_err_{i}",
+            name=f"Test Place {i}",
+            summary=f"Summary {i}",
+            description=f"Description {i}",
+            place_type="experience",
+            is_active=True,
+        )
+        session.add(entity)
+    await session.flush()
+
+    script = RephraseFromSource()
+    params = {
+        "source": "rexby",
+        "target_source": "my3pai",
+        "prefix": "rx:",
+        "max_entities": 5,
+        "dry_run": True,
+        "batch_size": 5,
+        "db_batch_size": 50,
+        "llm_temperature": "1.0",
+        "concurrency": 3,
+    }
+
+    # First 3 calls succeed, last 2 fail
+    call_count = [0]
+    
+    def mock_chat(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] <= 3:
+            return json.dumps({
+                "rephrased_name": "Fresh Name That Meets The Minimum Length Requirement Now",
+                "rephrased_summary": "Fresh Summary That Captures The Essence Of This Great Place",
+                "rephrased_description": "Fresh Description With Enough Content To Pass Validation. It Has Multiple Paragraphs And Provides Comprehensive Information About The Tourism Entity Including Location Features And Visitor Tips For Travelers.",
+            })
+        else:
+            raise Exception("LLM API error")
+
+    mock_llm = AsyncMock()
+    mock_llm.chat.side_effect = mock_chat
+
+    result = await script.run(params, session, llm=mock_llm)
+    assert result.success is True
+    assert result.affected_count == 3
+    assert "errors: 2" in result.message
+
+
+@pytest.mark.asyncio
+async def test_rephrase_quality_fallback(session: AsyncSession):
+    """Test that quality check triggers fallback."""
+    from dmo.models.database import Entity
+
+    # Create test entities
+    for i in range(5):
+        entity = Entity(
+            source="rexby",
+            source_id=f"quality_fb_{i}",
+            name=f"Test Place {i}",
+            summary=f"Summary {i}",
+            description=f"Description {i}",
+            place_type="experience",
+            is_active=True,
+        )
+        session.add(entity)
+    await session.flush()
+
+    script = RephraseFromSource()
+    params = {
+        "source": "rexby",
+        "target_source": "my3pai",
+        "prefix": "rx:",
+        "max_entities": 5,
+        "dry_run": True,
+        "batch_size": 5,
+        "db_batch_size": 50,
+        "llm_temperature": "1.0",
+        "concurrency": 5,
+    }
+
+    # All entities have empty names (quality failure)
+    mock_llm = AsyncMock()
+    mock_llm.chat.return_value = json.dumps({
+        "rephrased_name": "",
+        "rephrased_summary": "Summary",
+        "rephrased_description": "Description",
+    })
+
+    result = await script.run(params, session, llm=mock_llm)
+    assert result.success is False
+    assert "Quality check failed" in result.message
+    assert "fallback" in str(result.details).lower()
+
+
+@pytest.mark.asyncio
+async def test_rephrase_opencode_zen_config():
+    """Test that OpenCode Zen constants are defined."""
+    from dmo.admin_scripts.rephrase_from_source import (
+        OPENCODE_ZEN_API_KEY,
+        OPENCODE_ZEN_BASE_URL,
+        DEFAULT_MODEL,
+        DEFAULT_MAX_TOKENS,
+    )
+
+    assert OPENCODE_ZEN_API_KEY.startswith("sk-")
+    assert "opencode.ai" in OPENCODE_ZEN_BASE_URL
+    assert DEFAULT_MODEL == "deepseek-v4-flash"
+    assert DEFAULT_MAX_TOKENS == 10240
