@@ -350,6 +350,7 @@ class RephraseFromSource(AdminScript):
                         "error": f"LLM error: {str(e)}",
                         "quality": None,
                         "rephrased": None,
+                        "entity_data": entity_data,
                     }
             
             if response is None:
@@ -359,6 +360,7 @@ class RephraseFromSource(AdminScript):
                     "error": "No valid response after retries",
                     "quality": None,
                     "rephrased": None,
+                    "entity_data": entity_data,
                 }
             
             # Parse JSON (already validated above, but handle edge cases)
@@ -371,6 +373,7 @@ class RephraseFromSource(AdminScript):
                     "error": f"JSON parse error: {str(e)}",
                     "quality": None,
                     "rephrased": None,
+                    "entity_data": entity_data,
                 }
             
             # Validate
@@ -387,6 +390,7 @@ class RephraseFromSource(AdminScript):
                     "error": "empty_name",
                     "quality": quality,
                     "rephrased": rephrased,
+                    "entity_data": entity_data,
                 }
             
             if not dry_run:
@@ -406,6 +410,7 @@ class RephraseFromSource(AdminScript):
                         "error": f"collision: {new_source_id}",
                         "quality": quality,
                         "rephrased": rephrased,
+                        "entity_data": entity_data,
                     }
                 
                 # Insert entity via ORM
@@ -482,6 +487,7 @@ class RephraseFromSource(AdminScript):
                     "error": None,
                     "quality": quality,
                     "rephrased": rephrased,
+                    "entity_data": entity_data,
                 }
             else:
                 return {
@@ -490,6 +496,7 @@ class RephraseFromSource(AdminScript):
                     "error": None,
                     "quality": quality,
                     "rephrased": rephrased,
+                    "entity_data": entity_data,
                 }
 
     def _print_sample_outputs(self, samples: list[dict]):
@@ -706,9 +713,10 @@ class RephraseFromSource(AdminScript):
                         if dry_run and len(sample_outputs) < 5:
                             rephrased = result.get("rephrased", {})
                             quality = result.get("quality", {})
+                            entity = result.get("entity_data", {})
                             sample_outputs.append({
-                                "original_name": rephrased.get("rephrased_name", "") if rephrased else "",
-                                "original_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
+                                "original_name": entity.get("orig_name", ""),
+                                "original_summary": entity.get("orig_summary", ""),
                                 "rephrased_name": rephrased.get("rephrased_name", "") if rephrased else "",
                                 "rephrased_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
                                 "valid": quality.get("valid", False) if quality else False,
