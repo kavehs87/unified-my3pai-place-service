@@ -23,6 +23,7 @@ from dmo.services.cache import cache_delete_pattern as _orig_cache_delete_patter
 from dmo.services.cache import cache_get as _orig_cache_get
 from dmo.services.cache import cache_get_or_set as _orig_cache_get_or_set
 from dmo.services.cache import cache_set as _orig_cache_set
+from dmo.services.source_filter import invalidate_cache as _invalidate_source_cache
 
 TEST_DB_URL = os.environ.get(
     "TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
@@ -55,6 +56,9 @@ def _disable_cache(request):
         request.node.module.__name__ if request.node.module else ""
     )
 
+    # Clear disabled sources cache at start of each test
+    _invalidate_source_cache()
+
     # Don't patch cache_delete_pattern for cache tests
     is_cache_test = "test_cache" in (request.node.module.__name__ if request.node.module else "")
 
@@ -82,6 +86,7 @@ def _disable_cache(request):
     router_module.cache_get = _orig_cache_get
     router_module.cache_set = _orig_cache_set
     router_module.cache_get_or_set = _orig_cache_get_or_set
+    _invalidate_source_cache()
 
 
 @pytest.fixture(scope="session")
@@ -103,6 +108,11 @@ async def session(engine) -> AsyncSession:
         await s.exec(text("DELETE FROM classifications"))
         await s.exec(text("DELETE FROM media"))
         await s.exec(text("DELETE FROM entities"))
+        await s.exec(
+            text(
+                "DELETE FROM data_sources WHERE source NOT IN (SELECT DISTINCT source FROM entities WHERE is_active = TRUE)"
+            )
+        )
         await s.commit()
 
         yield s
@@ -112,6 +122,11 @@ async def session(engine) -> AsyncSession:
         await s.exec(text("DELETE FROM classifications"))
         await s.exec(text("DELETE FROM media"))
         await s.exec(text("DELETE FROM entities"))
+        await s.exec(
+            text(
+                "DELETE FROM data_sources WHERE source NOT IN (SELECT DISTINCT source FROM entities WHERE is_active = TRUE)"
+            )
+        )
         await s.commit()
 
 

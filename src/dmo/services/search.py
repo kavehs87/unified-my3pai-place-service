@@ -3,6 +3,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Entity
 from dmo.models.schemas import EntityListItem
+from dmo.services.source_filter import get_disabled_sources, source_not_in_clause
 
 
 async def search(
@@ -23,8 +24,15 @@ async def search(
     Auto-detects unified_category level (top/leaf) for filtering.
     Returns (items, total, next_cursor, has_more).
     """
+    await get_disabled_sources(session)
+
     where_parts = ["entities.is_active = true"]
     params: dict[str, object] = {}
+
+    not_in_sql, not_in_params = source_not_in_clause()
+    if not_in_sql:
+        where_parts.append(not_in_sql)
+        params.update(not_in_params)
 
     if source:
         where_parts.append("entities.source = :src")

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h2>Data Sources</h2>
+  <p>Enable or disable data sources. Disabled sources are excluded from all read API responses.</p>
+</div>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Entities</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in sources %}
+    <tr id="row-{{ s.source }}">
+      <td><span class="badge badge-source">{{ s.source }}</span></td>
+      <td>{{ s.entity_count }}</td>
+      <td>
+        {% if s.is_enabled %}
+        <span class="badge badge-enabled">Enabled</span>
+        {% else %}
+        <span class="badge badge-disabled">Disabled</span>
+        {% endif %}
+      </td>
+      <td>
+        <button
+          class="btn btn-sm {% if s.is_enabled %}btn-danger{% else %}btn-primary{% endif %}"
+          hx-post="/admin/sources/{{ s.source }}/toggle"
+          hx-target="#row-{{ s.source }}"
+          hx-swap="outerHTML"
+        >
+          {{ 'Disable' if s.is_enabled else 'Enable' }}
+        </button>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

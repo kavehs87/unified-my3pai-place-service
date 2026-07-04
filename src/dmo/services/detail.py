@@ -9,6 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Classification, Entity, Media
 from dmo.models.schemas import ClassificationItem, EntityDetail, MediaItem, OpenStatus
+from dmo.services.source_filter import get_disabled_sources, is_source_disabled
 
 _ALLOWED_TAGS = [
     "a",
@@ -127,6 +128,10 @@ async def get_detail(
         col(Entity.is_active),
     )
 
+    await get_disabled_sources(session)
+    if is_source_disabled(source):
+        return None
+
     entity_result, media_result, classif_result = await asyncio.gather(
         session.exec(entity_stmt),
         _fetch_media_by_source(session, source, source_id),
@@ -190,6 +195,10 @@ async def get_open_status(
 
     Returns None if entity not found.
     """
+    await get_disabled_sources(session)
+    if is_source_disabled(source):
+        return None
+
     stmt = select(Entity.is_open, Entity.opens_at, Entity.closes_at).where(
         col(Entity.source) == source,
         col(Entity.source_id) == source_id,

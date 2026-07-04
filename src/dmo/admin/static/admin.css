@@ -411,3 +411,13 @@ pre {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.badge-enabled {
+  background: #14532d;
+  color: #86efac;
+}
+
+.badge-disabled {
+  background: #7f1d1d;
+  color: #fca5a5;
+}

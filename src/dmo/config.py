@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     slow_request_threshold_ms: float = 500.0
     trust_proxy_headers: bool = True
     cache_debug: bool = False
+    disabled_sources: list[str] = []
 
     admin_username: str = "admin"
     admin_password: str = "admin"

@@ -22,6 +22,8 @@ from dmo.admin.script_runner import (
 from dmo.admin.settings_manager import load_settings, save_settings
 from dmo.admin_scripts.registry import get_script, list_scripts
 from dmo.db import get_session
+from dmo.services.cache import cache_delete_pattern
+from dmo.services.source_filter import invalidate_cache
 
 logger = structlog.get_logger()
 
@@ -981,4 +983,82 @@ async def admin_mappings_reunify(request: Request, session: AsyncSession = Depen
     return HTMLResponse(
         f'<div class="toast success">Re-unification started for "{source}". '
         f'<a href="/admin/scripts/runs/{run_id}" target="_blank">View progress</a></div>'
+    )
+
+
+# Source management
+
+
+@router.get("/sources", response_class=HTMLResponse)
+async def admin_sources(request: Request, session: AsyncSession = Depends(get_session)):
+    rows = await session.execute(
+        text(
+            "SELECT ds.source, ds.is_enabled, "
+            "(SELECT COUNT(*) FROM entities WHERE source = ds.source AND is_active = TRUE) AS entity_count "
+            "FROM data_sources ds ORDER BY ds.source"
+        )
+    )
+    sources = [
+        {
+            "source": r[0],
+            "is_enabled": r[1],
+            "entity_count": r[2],
+        }
+        for r in rows.fetchall()
+    ]
+    return templates.TemplateResponse(
+        request, "sources.html", {"active": "sources", "sources": sources}
+    )
+
+
+@router.post("/sources/{source}/toggle", response_class=HTMLResponse)
+async def admin_toggle_source(
+    request: Request, source: str, session: AsyncSession = Depends(get_session)
+):
+    stmt = text(
+        "UPDATE data_sources SET is_enabled = NOT is_enabled, updated_at = NOW() WHERE source = :source"
+    )
+    result = await session.execute(stmt, {"source": source})
+    if result.rowcount == 0:
+        return HTMLResponse(f'<tr><td colspan="4">Source "{source}" not found</td></tr>')
+
+    await session.commit()
+
+    invalidate_cache()
+
+    await cache_delete_pattern("dmo:search:*")
+    await cache_delete_pattern("dmo:nearby:*")
+    await cache_delete_pattern("dmo:map:*")
+    await cache_delete_pattern("dmo:detail:*")
+    await cache_delete_pattern("dmo:open_status:*")
+
+    row = await session.execute(
+        text(
+            "SELECT ds.source, ds.is_enabled, "
+            "(SELECT COUNT(*) FROM entities WHERE source = ds.source AND is_active = TRUE) AS entity_count "
+            "FROM data_sources ds WHERE ds.source = :source"
+        ),
+        {"source": source},
+    )
+    r = row.fetchone()
+    is_enabled = r[1]
+    entity_count = r[2]
+    badge_cls = "enabled" if is_enabled else "disabled"
+    status_text = "Enabled" if is_enabled else "Disabled"
+    btn_text = "Disable" if is_enabled else "Enable"
+    btn_cls = "btn-danger" if is_enabled else "btn-primary"
+
+    return HTMLResponse(
+        f'<tr id="row-{source}">'
+        f'<td><span class="badge badge-source">{source}</span></td>'
+        f"<td>{entity_count}</td>"
+        f"<td>"
+        f'<span class="badge badge-{badge_cls}">{status_text}</span>'
+        f"</td>"
+        f"<td>"
+        f'<button class="btn btn-sm {btn_cls}" hx-post="/admin/sources/{source}/toggle" hx-target="#row-{source}" hx-swap="outerHTML">'
+        f"{btn_text}"
+        f"</button>"
+        f"</td>"
+        f"</tr>"
     )
