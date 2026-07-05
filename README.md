@@ -2,7 +2,7 @@
 
 > Unified data store and query API for tourism/POI entities across multiple import sources.
 
-**Status:** Production — `212.227.171.22` (16 CPU / 8 GB RAM)
+**Status:** Production — `fw.my3p.ai` (16 CPU / 8 GB RAM)
 
 ## Overview
 
@@ -179,7 +179,7 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 |-------------|------|-----------|------|
 | Test | `10.0.1.8` | — | `/root/ups` |
 | Staging | `10.0.2.10` | — | `/root/ups` |
-| **Production** | `212.227.171.22` | **16 CPU / 8 GB RAM** | `/root/ups` |
+| **Production** | `fw.my3p.ai` | **16 CPU / 8 GB RAM** | `/root/ups` |
 
 ### Production Resource Allocation
 
@@ -196,7 +196,7 @@ Auto-discovered management scripts for data quality, enrichment, and maintenance
 # Deploy to any environment (handles rsync + compose file + docker build)
 ./scripts/deploy.sh --test        # test VM (10.0.1.8)
 ./scripts/deploy.sh --staging     # staging VM (10.0.2.10)
-./scripts/deploy.sh --prod        # production VM (212.227.171.22)
+./scripts/deploy.sh --prod        # production VM (fw.my3p.ai)
 
 # Options
 ./scripts/deploy.sh --prod --dry-run    # preview changes

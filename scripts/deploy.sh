@@ -239,6 +239,12 @@ run_ssh "mkdir -p ${REMOTE_PATH}"
 rsync -azvh --delete -e "$RSYNC_SSH" "${EXCLUDE_ARGS[@]}" ./ "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/"
 success "Files synced to ${REMOTE_PATH}"
 
+# ─── Step 2a: Copy compose file ─────────────────────────────────────────────
+info "Copying ${COMPOSE_SOURCE} → ${COMPOSE_TARGET} on VM..."
+rsync -avz -e "$RSYNC_SSH" --include="$COMPOSE_SOURCE" --exclude="*" "$PROJECT_ROOT/" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/"
+run_ssh "cp ${REMOTE_PATH}/${COMPOSE_SOURCE} ${REMOTE_PATH}/${COMPOSE_TARGET}"
+success "Compose file deployed as ${COMPOSE_TARGET}"
+
 # ─── Step 2b: Provision .env ────────────────────────────────────────────────
 if ! run_ssh "test -f ${REMOTE_PATH}/.env"; then
   if [[ -f "$PROJECT_ROOT/.env.template" ]]; then
@@ -313,7 +319,7 @@ for i in $(seq 1 $HEALTH_CHECK_TIMEOUT); do
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
   if [[ "$HTTP_CODE" == "200" ]]; then
     success "Health check passed (HTTP $HTTP_CODE)"
-    success "${ENVIRONMENT^} deployment complete!"
+    success "${ENVIRONMENT} deployment complete!"
     info "API: $HEALTH_URL"
     exit 0
   fi
