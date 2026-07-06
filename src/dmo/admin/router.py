@@ -508,21 +508,21 @@ async def admin_script_status(run_id: str):
         return JSONResponse({"error": "Run not found"}, status_code=404)
 
     result = None
-    if run.result:
-        result = run.result
-    elif run.error:
-        result = {"success": False, "message": run.error, "affected_count": 0, "details": []}
+    if run.get("result"):
+        result = run["result"]
+    elif run.get("error"):
+        result = {"success": False, "message": run["error"], "affected_count": 0, "details": []}
 
     return JSONResponse(
         {
-            "run_id": run.id,
-            "script_name": run.script_name,
-            "status": run.status,
-            "progress_pct": run.progress_pct,
-            "message": run.message,
-            "started_at": run.started_at,
-            "finished_at": run.finished_at,
-            "error": run.error,
+            "run_id": run["id"],
+            "script_name": run["script_name"],
+            "status": run["status"],
+            "progress_pct": run["progress_pct"],
+            "message": run["message"],
+            "started_at": run["started_at"],
+            "finished_at": run["finished_at"],
+            "error": run["error"],
             "result": result,
         }
     )
