@@ -121,9 +121,13 @@ class RebuildSourceIndexes(AdminScript):
         for idx_name in dropped:
             await db.execute(text(f"DROP INDEX IF EXISTS {idx_name}"))
 
-        # Create new indexes (CONCURRENTLY not available in non-transactional context,
-        # but admin scripts run in a transaction, so we use regular CREATE)
+        # Increase statement timeout for index creation (can take 30-60s on large tables)
+        await db.execute(text("SET statement_timeout = '120s'"))
+
+        # Create new indexes
         for create_sql in created:
+            if progress_callback:
+                await progress_callback(50, f"Creating {create_sql.split()[-1].split()[0]}...")
             await db.execute(text(create_sql))
 
         await db.commit()
