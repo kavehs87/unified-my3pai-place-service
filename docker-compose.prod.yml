@@ -27,12 +27,23 @@ services:
 
   db:
     image: postgis/postgis:16-3.4
+    command: >
+      postgres
+      -c shared_buffers=2GB
+      -c work_mem=64MB
+      -c effective_cache_size=6GB
+      -c random_page_cost=1.1
+      -c maintenance_work_mem=512MB
+      -c wal_buffers=16MB
+      -c default_statistics_target=200
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_DB: ${POSTGRES_DB:-dmo}
     ports:
       - "5432:5432"
+    tmpfs:
+      - /dev/shm:rw,noexec,nosuid,size=1G
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

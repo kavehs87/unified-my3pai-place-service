@@ -1048,6 +1048,13 @@ async def admin_toggle_source(
     btn_text = "Disable" if is_enabled else "Enable"
     btn_cls = "btn-danger" if is_enabled else "btn-primary"
 
+    idx_warning = (
+        '<td colspan="4" style="padding-top:0">'
+        '<span class="text-warning">⚠ Composite trigram indexes are stale. '
+        '<a href="/admin/scripts/rebuild_source_indexes">Rebuild indexes</a> to restore search performance.</span>'
+        "</td>"
+    )
+
     return HTMLResponse(
         f'<tr id="row-{source}">'
         f'<td><span class="badge badge-source">{source}</span></td>'
@@ -1061,4 +1068,5 @@ async def admin_toggle_source(
         f"</button>"
         f"</td>"
         f"</tr>"
+        f"<tr>{idx_warning}</tr>"
     )
