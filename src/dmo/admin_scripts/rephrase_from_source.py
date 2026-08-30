@@ -9,8 +9,8 @@ from dmo.admin_scripts.base import AdminScript, ScriptMeta, ScriptParameter, Scr
 
 logger = __import__("structlog").get_logger(__name__)
 
-OPENCODE_ZEN_API_KEY = "sk-l1Kyv57RsQ0QnUqrRW0kJGtCqj36jcXg0V4Tz6Xqph6AmCZxQHkCBzugnJkoyn0G"
-OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1"
+OPENCODE_ZEN_API_KEY = os.getenv("OPENCODE_ZEN_API_KEY", "")
+OPENCODE_ZEN_BASE_URL = os.getenv("OPENCODE_ZEN_BASE_URL", "https://opencode.ai/zen/v1")
 DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_MAX_RETRIES = 2

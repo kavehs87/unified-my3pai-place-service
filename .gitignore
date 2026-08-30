@@ -7,9 +7,9 @@ plans/
 AGENTS.md
 .DS_Store
 .env.staging
+.env.production
 backups/
 results/
-yes yes.pub
 
 # opencode / agent tooling (kept locally, not tracked)
 .opencode/
