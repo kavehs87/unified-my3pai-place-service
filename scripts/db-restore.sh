@@ -17,6 +17,10 @@ REMOTE_MODE=false
 TEST_MODE=false
 FORCE_MODE=false
 LIST_MODE=false
+CUSTOM_HOST=false
+CUSTOM_HOST_SPEC=""
+CUSTOM_PATH_SET=false
+CUSTOM_PATH_VALUE=""
 RESTORE_FILE=""
 
 STAGING_HOST="${STAGING_HOST:-}"
@@ -49,12 +53,24 @@ while [[ $# -gt 0 ]]; do
     --prod)    PROD_MODE=true; REMOTE_MODE=true; shift ;;
     --force)   FORCE_MODE=true; shift ;;
     --list)    LIST_MODE=true; shift ;;
+    --host)
+       CUSTOM_HOST=true
+       [[ $# -ge 2 ]] || die "--host requires an argument (USER@HOST[:PORT])"
+       CUSTOM_HOST_SPEC="$2"; shift 2
+       ;;
+    --path)
+       CUSTOM_PATH_SET=true
+       [[ $# -ge 2 ]] || die "--path requires an argument"
+       CUSTOM_PATH_VALUE="$2"; shift 2
+       ;;
     --help|-h)
-      echo "Usage: $0 [--remote] [--test] [--prod] [--force] [--list] [backup_file]"
+      echo "Usage: $0 [--remote] [--test] [--prod] [--host USER@HOST[:PORT]] [--path DIR] [--force] [--list] [backup_file]"
       echo ""
       echo "  --remote      Restore to staging VM (requires STAGING_HOST or .env.staging)"
       echo "  --prod        Restore to production VM (requires .env.production)"
       echo "  --test        Restore to test VM (10.0.1.8)"
+      echo "  --host        Restore to an arbitrary VM (USER@HOST[:PORT]), overrides env files"
+      echo "  --path        Project dir on target VM (default: /root/ups, used with --host)"
       echo "  --force       Skip confirmation prompt"
       echo "  --list        List available backups"
       echo "  backup_file   Path to .dump file (default: latest backup)"
@@ -117,6 +133,20 @@ else
     . "$PROJECT_ROOT/.env"
     set +a
   fi
+fi
+
+# ─── Custom host override (--host) ───────────────────────────────────────────
+if $CUSTOM_HOST; then
+  [[ "$CUSTOM_HOST_SPEC" == *@* ]] || die "--host format: USER@HOST[:PORT] (got: $CUSTOM_HOST_SPEC)"
+  STAGING_USER="${CUSTOM_HOST_SPEC%%@*}"
+  HOSTPORT="${CUSTOM_HOST_SPEC#*@}"
+  STAGING_HOST="${HOSTPORT%%:*}"
+  if [[ "$HOSTPORT" == *:* ]]; then
+    STAGING_SSH_PORT="${HOSTPORT##*:}"
+  fi
+  STAGING_PATH="${CUSTOM_PATH_VALUE:-/root/ups}"
+  REMOTE_MODE=true
+  info "Custom host mode: ${STAGING_USER}@${STAGING_HOST}:${STAGING_SSH_PORT} (${STAGING_PATH})"
 fi
 
 # ─── SSH config ──────────────────────────────────────────────────────────────
@@ -206,7 +236,9 @@ if ! $FORCE_MODE; then
   echo ""
   warn "WARNING: This will REPLACE the entire database!"
   echo ""
-  if $TEST_MODE; then
+  if $CUSTOM_HOST; then
+    echo "  Target: ${STAGING_USER}@${STAGING_HOST}:${STAGING_SSH_PORT} (CUSTOM VM)"
+  elif $TEST_MODE; then
     echo "  Target: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
   elif $PROD_MODE; then
     echo "  Target: ${STAGING_USER}@${STAGING_HOST} (PRODUCTION VM)"
@@ -362,13 +394,15 @@ success "api service started"
 
 # ─── Done ────────────────────────────────────────────────────────────────────
 success "Restore complete!"
-if $TEST_MODE; then
-  info "Restored on: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
-elif $PROD_MODE; then
-  info "Restored on: ${STAGING_USER}@${STAGING_HOST} (PRODUCTION VM)"
-elif $REMOTE_MODE; then
-  info "Restored on: ${STAGING_USER}@${STAGING_HOST} (STAGING VM)"
-else
-  info "Restored on: local Docker Compose"
-fi
+  if $CUSTOM_HOST; then
+    info "Restored on: ${STAGING_USER}@${STAGING_HOST}:${STAGING_SSH_PORT} (CUSTOM VM)"
+  elif $TEST_MODE; then
+    info "Restored on: ${STAGING_USER}@${STAGING_HOST} (TEST VM)"
+  elif $PROD_MODE; then
+    info "Restored on: ${STAGING_USER}@${STAGING_HOST} (PRODUCTION VM)"
+  elif $REMOTE_MODE; then
+    info "Restored on: ${STAGING_USER}@${STAGING_HOST} (STAGING VM)"
+  else
+    info "Restored on: local Docker Compose"
+  fi
 info "Backup used: $RESTORE_FILE"
