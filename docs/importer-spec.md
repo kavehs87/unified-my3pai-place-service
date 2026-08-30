@@ -9,7 +9,7 @@ Every entity must include these fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `source` | string | Your source identifier (e.g., `"osm"`, `"tourpedia"`, `"rexby"`) |
+| `source` | string | Your source identifier (e.g., `"osm"`, `"tourpedia"`, `"example_source"`) |
 | `source_id` | string | Unique ID from your source system |
 | `name` | string | Display name for the entity |
 | `place_type` | string | Your source's category value (e.g., `"restaurant"`, `"hotel"`, `"poi"`) |
@@ -66,7 +66,7 @@ Bulk-insert classifications via `POST /classifications` after entity creation:
 | `amenity` | OSM-style amenity tags (e.g., `"cuisine": "pizza"`) |
 | `service` | Tourpedia-style services (e.g., `"wifi"`, `"parking"`) |
 | `feature` | Tourpedia-style features (e.g., `"indoor"`, `"family_friendly"`) |
-| `secondary_category` | Rexby-style secondary categories |
+| `secondary_category` | Provider secondary categories |
 | `tag` | DZT-style free-form tags |
 
 Classifications are upserted on `(entity_id, category, value_code)`. Duplicate inserts are
@@ -78,7 +78,7 @@ The `attributes` JSONB column is the overflow for anything that doesn't fit type
 
 ### Prefix convention
 Prefix source-specific keys with your source name to avoid collisions:
-- `"yoursource_fieldname"` — e.g., `"rexby_activity_level"`, `"tourpedia_services"`
+- `"yoursource_fieldname"` — e.g., `"example_source_activity_level"`, `"tourpedia_services"`
 
 ### Route / Tour data
 Store in `attributes`: `distance_km`, `duration_min`, `ascent_m`, `descent_m`,
