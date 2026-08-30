@@ -4,6 +4,22 @@ Unified place data store and query API. Provider-agnostic PostgreSQL + PostGIS b
 
 Status: production at `fw.my3p.ai` (16 CPU / 8 GB RAM) / 1.35M entities, PostGIS 16, Redis, 8 Uvicorn workers.
 
+## Contents
+
+* [Why this exists](#why-this-exists)
+* [Key properties](#key-properties)
+* [Architecture](#architecture)
+* [Data model](#data-model)
+* [API](#api)
+* [Performance - proven at 1.35M entities and 2M requests](#performance---proven-at-135m-entities-and-2m-requests)
+* [Operations](#operations)
+* [Tech stack](#tech-stack)
+* [Getting started](#getting-started)
+* [Configuration](#configuration)
+* [Project structure](#project-structure)
+* [Deployment](#deployment)
+* [Notes](#notes)
+
 ## Why this exists
 
 Tourism data comes from many providers with different schemas, quality and update cycles. Frontend applications need a single, fast query layer that hides provider differences and handles spatial and text queries at scale.
@@ -105,6 +121,30 @@ All numbers below are from `k6` on staging with the production dataset (1.2M ent
 * Ramp test scale from about 58 VUs to about 130 VUs before errors, with 67 percent less CPU and 50 percent less RAM
 * Spatial and text queries sustain 50 VUs with 0 percent failures warm
 
+```mermaid
+xychart-beta
+    title "Cold Cache Failure Rate (%) at 50 VUs"
+    x-axis ["Before", "After tuning", "fulltext=false"]
+    y-axis "Failures %" 0 --> 18
+    bar [16.27, 0.20, 0.0]
+```
+
+```mermaid
+xychart-beta
+    title "Cold Search P95 Latency"
+    x-axis ["Before", "After tuning", "Name only (47 ms)"]
+    y-axis "P95 ms" 0 --> 9200
+    bar [9000, 562, 47]
+```
+
+```mermaid
+xychart-beta
+    title "Soak Test - 120 min at 50 VUs"
+    x-axis ["Requests", "P95 (ms) x100", "Failures % x1000"]
+    y-axis "Count" 0 --> 2100000
+    bar [2056044, 730, 0]
+```
+
 **Selected results after Phase 3 (Postgres and Redis tuning, 4 partial indexes, pool/timeout tuning):**
 
 | Scenario | VUs | Duration | Requests | Failures | P95 | Notes |
@@ -130,6 +170,23 @@ All numbers below are from `k6` on staging with the production dataset (1.2M ent
 | Indexes (531 MB) | none | `idx_entities_name_trgm_active` 91 MB, `summary` 146 MB, `location` 94 MB, `location_type` 200 MB | trigram and spatial bound by index |
 | Redis `maxmemory` / `policy` | unlimited / noeviction | 1 GB / allkeys-lru | peak 800 VUs from 99 percent to 0.52 percent failures |
 
+```mermaid
+xychart-beta
+    title "Throughput - Cold Cache at 50 VUs (RPS)"
+    x-axis ["Before", "After tuning"]
+    y-axis "Requests per second" 0 --> 450
+    bar [62, 398]
+```
+
+```mermaid
+pie showData
+    title Index Sizes - 531 MB Total
+    "name_trgm 91 MB" : 91
+    "summary 146 MB" : 146
+    "location 94 MB" : 94
+    "location_type 200 MB" : 200
+```
+
 **Capacity guidance on 4 CPU / 3 GB (current staging, prod is 16 CPU / 8 GB):**
 
 * Safe: up to about 50 concurrent users or 200 RPS warm, P95 under 50 ms
@@ -137,6 +194,8 @@ All numbers below are from `k6` on staging with the production dataset (1.2M ent
 * Limit: over 130 VUs errors rise, spatial is first to degrade, writes stay at about 1 batch per second per source (advisory lock) and about 8 per second across sources
 
 Reproduce: `loadtest/run_all.sh` and `k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000`. Full logs in `loadtest/` and `results/`. Regenerate API docs with `uv run python scripts/export-openapi.py`.
+
+<p align="right"><a href="#contents">Back to top</a></p>
 
 ## Operations
 
