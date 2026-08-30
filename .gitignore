@@ -10,3 +10,11 @@ AGENTS.md
 backups/
 results/
 yes yes.pub
+
+# opencode / agent tooling (kept locally, not tracked)
+.opencode/
+opencode.json
+opencode.jsonc
+.claude/
+.cursor/
+.codex/
