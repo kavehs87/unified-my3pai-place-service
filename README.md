@@ -19,6 +19,7 @@ Status: production at `fw.my3p.ai` (16 CPU / 8 GB RAM) / 1.35M entities, PostGIS
 * [Project structure](#project-structure)
 * [Deployment](#deployment)
 * [Notes](#notes)
+* [License](#license)
 
 ## Why this exists
 
@@ -286,3 +287,9 @@ Each environment has its own compose file (`docker-compose.{test,staging,prod}.y
 * String fields are stripped via `model_validator(mode='before')`, not `Field(strip_whitespace)`.
 * `unified_categories.slug` is immutable after creation. Admin UI disables it on edit and the backend excludes it from updates.
 * Do not add routes after `/{source}/{source_id}`. Do not use `LIKE`; use `col(Entity.name).op('%')(q)` for trigram.
+
+## License
+
+MIT License — see [LICENSE](LICENSE). Copyright (c) 2026 My3Pai. Free for commercial and non-commercial use with attribution.
+
+<p align="right"><a href="#contents">Back to top</a></p>
