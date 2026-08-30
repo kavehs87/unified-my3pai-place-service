@@ -93,19 +93,50 @@ GET /admin/                 # dashboard, entity browser, script runner, taxonomy
 
 Route ordering matters: `/classifications/categories` and delete routes are registered before the catch-all `/{source}/{source_id}`.
 
-## Performance
+## Performance - proven at 1.35M entities and 2M requests
 
-Tested with `k6` on staging with 1.2M entities. Selected results after Phase 3 optimizations (Postgres and Redis tuning, partial indexes, pool and timeout tuning):
+All numbers below are from `k6` on staging with the production dataset (1.2M entities at test time, now 1.35M). Tests run against the same code and data that is in production.
 
-* Cold cache (50 VUs, 2 min): failure rate 0.20 percent, P95 562 ms. With `fulltext=false` (default, name only) cold search is about 47 ms versus 2.8 s with summary included.
-* Warm cache (10 VUs, 2 min): 0 failures, P95 48 ms.
-* Soak (50 VUs, 120 min, 2M requests): 0 failures, P95 7.3 ms, no memory growth.
-* Spatial dense bbox (50 VUs, 5 min): 0.24 percent failures, P95 about 1.1 to 2.7 s depending on CPU.
-* Writes: single-source bulk about 454 ms per batch (serialized by advisory lock), multi-source bulk about 556 ms per batch (concurrent).
+**Highlights:**
 
-Capacity guidance from tests on 4 CPU / 3 GB: safe to about 50 concurrent users or 200 RPS warm. Breaking point observed near 130 VUs with current pool size 20. Spatial queries are the most CPU-sensitive.
+* 0 failures for 2,056,044 requests in 120 min soak at 50 VUs, P95 7.3 ms, stable memory
+* Cold cache failure rate from 16.27 percent to 0.20 percent after tuning, and to 0.00 percent with `fulltext=false`
+* Name-only search 47 ms cold versus 2.8 s with summary, 136x faster at P95 after the `fulltext` flag
+* Ramp test scale from about 58 VUs to about 130 VUs before errors, with 67 percent less CPU and 50 percent less RAM
+* Spatial and text queries sustain 50 VUs with 0 percent failures warm
 
-Full results and scripts are in `loadtest/` and `results/`. Regenerate OpenAPI docs after router changes with `uv run python scripts/export-openapi.py`.
+**Selected results after Phase 3 (Postgres and Redis tuning, 4 partial indexes, pool/timeout tuning):**
+
+| Scenario | VUs | Duration | Requests | Failures | P95 | Notes |
+|---|---|---|---|---|---|---|
+| Cold cache, default (`fulltext=false`) | 50 | 2 min | 21,354 | 0.20 percent | 562 ms | 47 ms for name-only, 2.8 s if summary included |
+| Cold cache, fulltext | 50 | 2 min | 398 RPS | 0.00 percent | 87 ms | opt-in summary search |
+| Warm cache | 10 | 2 min | 10,183 | 0 percent | 48 ms | steady state |
+| Ramp 50 to 800 | 50 to 800 | 15 min | 236,955 | 4.12 percent | 2,833 ms | first errors near 130 VUs |
+| Peak | 800 | 5 min | 124,530 | 0.52 percent | 5,550 ms | Redis 1 GB LRU, DB pool is limit |
+| Soak | 50 | 120 min | 2,056,044 | 0 percent | 7.3 ms | no growth over 2 hours |
+| Spatial dense bbox | 50 | 5 min | 13,254 | 0.24 percent | 1,109 ms | about 2.7 s on 4 CPU at 10 GB traffic |
+| Bulk single-source | 5 | 2 min | 628 batches | 58 percent | 454 ms | serialized by advisory lock |
+| Bulk multi-source | 8 | 2 min | 910 batches | 0 percent | 556 ms | per-source lock isolation |
+
+**What changed to get there:**
+
+| Area | Before | After | Impact |
+|---|---|---|---|
+| `work_mem` / `shared_buffers` / `maintenance_work_mem` | 4 MB / 128 MB / 64 MB | 32 MB / 1.5 GB / 512 MB | cold cache P95 9,000 ms to 562 ms |
+| `POOL_SIZE` / `MAX_OVERFLOW` | 10 / 5 | 20 / 10 | eliminated pool exhaustion at 50 VUs |
+| `QUERY_TIMEOUT_SECONDS` | 10 | 30 | spatial bbox headroom |
+| `fulltext` flag | always search `summary` | `name` only by default | 2.8 s to 47 ms cold, 13.4x more RPS |
+| Indexes (531 MB) | none | `idx_entities_name_trgm_active` 91 MB, `summary` 146 MB, `location` 94 MB, `location_type` 200 MB | trigram and spatial bound by index |
+| Redis `maxmemory` / `policy` | unlimited / noeviction | 1 GB / allkeys-lru | peak 800 VUs from 99 percent to 0.52 percent failures |
+
+**Capacity guidance on 4 CPU / 3 GB (current staging, prod is 16 CPU / 8 GB):**
+
+* Safe: up to about 50 concurrent users or 200 RPS warm, P95 under 50 ms
+* Warning: 50 to 130 VUs, P95 50 to 500 ms, DB pool 16 to 27 of 30
+* Limit: over 130 VUs errors rise, spatial is first to degrade, writes stay at about 1 batch per second per source (advisory lock) and about 8 per second across sources
+
+Reproduce: `loadtest/run_all.sh` and `k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000`. Full logs in `loadtest/` and `results/`. Regenerate API docs with `uv run python scripts/export-openapi.py`.
 
 ## Operations
 
