@@ -290,6 +290,8 @@ Each environment has its own compose file (`docker-compose.{test,staging,prod}.y
 
 ## License
 
-MIT License — see [LICENSE](LICENSE). Copyright (c) 2026 My3Pai. Free for commercial and non-commercial use with attribution.
+Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 My3Pai. Licensed under Apache 2.0 with patent grant, free for commercial and non-commercial use.
+
+Licensed under the Apache License, Version 2.0. You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0.
 
 <p align="right"><a href="#contents">Back to top</a></p>
