@@ -29,6 +29,34 @@ TEST_DB_URL = os.environ.get(
     "TEST_DB_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/dmo"
 )
 
+# Safety guard: the session fixture below runs DELETE FROM entities/media/...
+# against TEST_DB_URL. Abort instead of wiping a database that holds real data
+# (dev/prod copy). Test suites create <1k rows; anything above this is not a
+# throwaway test database.
+_TEST_DB_MAX_ROWS = 10_000
+_db_safety_checked: dict[str, bool] = {}
+
+
+async def _assert_test_db_safe(eng) -> None:
+    """Abort if TEST_DB_URL points at a database holding real data."""
+    url = str(eng.url)
+    if _db_safety_checked.get(url):
+        return
+    try:
+        async with eng.connect() as conn:
+            count = (await conn.execute(text("SELECT count(*) FROM entities"))).scalar() or 0
+    except Exception:
+        # entities table missing (fresh database) — safe, create_all builds it.
+        _db_safety_checked[url] = True
+        return
+    if count > _TEST_DB_MAX_ROWS:
+        raise RuntimeError(
+            f"Refusing to run tests against {url}: entities table holds "
+            f"{count} rows (> {_TEST_DB_MAX_ROWS} safety limit). "
+            "Point TEST_DB_URL at a throwaway test database."
+        )
+    _db_safety_checked[url] = True
+
 
 @pytest.fixture(autouse=True)
 def _disable_cache(request):
@@ -92,6 +120,7 @@ def _disable_cache(request):
 @pytest.fixture(scope="session")
 async def engine():
     eng = create_async_engine(TEST_DB_URL, echo=False)
+    await _assert_test_db_safe(eng)
     async with eng.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(SQLModel.metadata.create_all)
@@ -113,6 +142,7 @@ async def session(engine) -> AsyncSession:
                 "DELETE FROM data_sources WHERE source NOT IN (SELECT DISTINCT source FROM entities WHERE is_active = TRUE)"
             )
         )
+        await _cleanup_test_taxonomy(s)
         await s.commit()
 
         yield s
@@ -127,7 +157,29 @@ async def session(engine) -> AsyncSession:
                 "DELETE FROM data_sources WHERE source NOT IN (SELECT DISTINCT source FROM entities WHERE is_active = TRUE)"
             )
         )
+        await _cleanup_test_taxonomy(s)
         await s.commit()
+
+
+async def _cleanup_test_taxonomy(s: AsyncSession) -> None:
+    """Remove taxonomy/mapping rows created by admin-script tests.
+
+    Tests insert categories with a `test_` slug prefix; without this cleanup
+    reruns hit unique-key violations (unified_categories.slug).
+    """
+    await s.exec(
+        text(
+            "DELETE FROM place_kind_mappings WHERE unified_category_id IN "
+            "(SELECT id FROM unified_categories WHERE slug LIKE 'test\\_%')"
+        )
+    )
+    await s.exec(
+        text(
+            "DELETE FROM place_type_mappings WHERE unified_category_id IN "
+            "(SELECT id FROM unified_categories WHERE slug LIKE 'test\\_%')"
+        )
+    )
+    await s.exec(text("DELETE FROM unified_categories WHERE slug LIKE 'test\\_%'"))
 
 
 @pytest.fixture
