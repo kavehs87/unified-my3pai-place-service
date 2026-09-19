@@ -613,7 +613,7 @@ async def test_rephrase_concurrency_parameter():
     assert script is not None
     param_names = [p.name for p in script.meta.parameters]
     assert "concurrency" in param_names
-    
+
     concurrency_param = next(p for p in script.meta.parameters if p.name == "concurrency")
     assert concurrency_param.default == 5
     assert concurrency_param.type == "int"
@@ -747,15 +747,17 @@ async def test_rephrase_concurrency_with_errors(session: AsyncSession):
 
     # First 3 calls succeed, last 2 fail
     call_count = [0]
-    
+
     def mock_chat(*args, **kwargs):
         call_count[0] += 1
         if call_count[0] <= 3:
-            return json.dumps({
-                "rephrased_name": "Fresh Name That Meets The Minimum Length Requirement Now",
-                "rephrased_summary": "Fresh Summary That Captures The Essence Of This Great Place",
-                "rephrased_description": "Fresh Description With Enough Content To Pass Validation. It Has Multiple Paragraphs And Provides Comprehensive Information About The Tourism Entity Including Location Features And Visitor Tips For Travelers.",
-            })
+            return json.dumps(
+                {
+                    "rephrased_name": "Fresh Name That Meets The Minimum Length Requirement Now",
+                    "rephrased_summary": "Fresh Summary That Captures The Essence Of This Great Place",
+                    "rephrased_description": "Fresh Description With Enough Content To Pass Validation. It Has Multiple Paragraphs And Provides Comprehensive Information About The Tourism Entity Including Location Features And Visitor Tips For Travelers.",
+                }
+            )
         else:
             raise Exception("LLM API error")
 
@@ -802,11 +804,13 @@ async def test_rephrase_quality_fallback(session: AsyncSession):
 
     # All entities have empty names (quality failure)
     mock_llm = AsyncMock()
-    mock_llm.chat.return_value = json.dumps({
-        "rephrased_name": "",
-        "rephrased_summary": "Summary",
-        "rephrased_description": "Description",
-    })
+    mock_llm.chat.return_value = json.dumps(
+        {
+            "rephrased_name": "",
+            "rephrased_summary": "Summary",
+            "rephrased_description": "Description",
+        }
+    )
 
     result = await script.run(params, session, llm=mock_llm)
     assert result.success is False
@@ -818,10 +822,10 @@ async def test_rephrase_quality_fallback(session: AsyncSession):
 async def test_rephrase_opencode_zen_config():
     """Test that OpenCode Zen constants are defined."""
     from dmo.admin_scripts.rephrase_from_source import (
+        DEFAULT_MAX_TOKENS,
+        DEFAULT_MODEL,
         OPENCODE_ZEN_API_KEY,
         OPENCODE_ZEN_BASE_URL,
-        DEFAULT_MODEL,
-        DEFAULT_MAX_TOKENS,
     )
 
     assert OPENCODE_ZEN_API_KEY.startswith("sk-")

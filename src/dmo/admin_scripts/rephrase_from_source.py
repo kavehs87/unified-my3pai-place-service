@@ -5,6 +5,7 @@ import re
 from contextlib import suppress
 
 from sqlalchemy import text
+
 from dmo.admin_scripts.base import AdminScript, ScriptMeta, ScriptParameter, ScriptResult
 
 logger = __import__("structlog").get_logger(__name__)
@@ -29,19 +30,19 @@ def _strip_html(text: str) -> str:
 
 def _validate_rephrased(entity_data: dict, rephrased: dict) -> dict:
     """Validate rephrased output meets quality thresholds.
-    
+
     Returns: {"valid": bool, "issues": [str], "name_length": int, "summary_length": int, "description_length": int}
     """
     issues = []
-    
+
     name = rephrased.get("rephrased_name", "") or ""
     summary = rephrased.get("rephrased_summary", "") or ""
     description = rephrased.get("rephrased_description", "") or ""
-    
+
     name_length = len(name)
     summary_length = len(summary)
     description_length = len(description)
-    
+
     # Name checks
     if not name:
         issues.append("empty_name")
@@ -49,19 +50,19 @@ def _validate_rephrased(entity_data: dict, rephrased: dict) -> dict:
         issues.append(f"name_too_short ({name_length} chars)")
     elif name_length > 200:
         issues.append(f"name_too_long ({name_length} chars)")
-    
+
     # Summary checks
     if not summary:
         issues.append("empty_summary")
     elif summary_length < 20:
         issues.append(f"summary_too_short ({summary_length} chars)")
-    
+
     # Description checks
     if not description:
         issues.append("empty_description")
     elif description_length < 50:
         issues.append(f"description_too_short ({description_length} chars)")
-    
+
     return {
         "valid": len(issues) == 0,
         "issues": issues,
@@ -197,7 +198,11 @@ class RephraseFromSource(AdminScript):
                 )
                 if not response or not response.strip():
                     if attempt < max_retries - 1:
-                        logger.warning("rephrase_empty_response_retry", attempt=attempt + 1, max_retries=max_retries)
+                        logger.warning(
+                            "rephrase_empty_response_retry",
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                        )
                         await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
                         continue
                     raise ValueError("Empty response from LLM after retries")
@@ -205,7 +210,12 @@ class RephraseFromSource(AdminScript):
             except Exception as e:
                 last_error = e
                 if attempt < max_retries - 1:
-                    logger.warning("rephrase_llm_error_retry", error=str(e), attempt=attempt + 1, max_retries=max_retries)
+                    logger.warning(
+                        "rephrase_llm_error_retry",
+                        error=str(e),
+                        attempt=attempt + 1,
+                        max_retries=max_retries,
+                    )
                     await asyncio.sleep(1 * (attempt + 1))
                     continue
                 logger.error("rephrase_llm_error", error=str(e), exc_info=True)
@@ -219,7 +229,7 @@ class RephraseFromSource(AdminScript):
             if cleaned.startswith("```"):
                 cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned)
                 cleaned = re.sub(r"\n?```$", "", cleaned)
-            
+
             # Skip reasoning content - look for JSON object
             # Models like DeepSeek sometimes put reasoning before the actual JSON
             if not cleaned.startswith("{"):
@@ -237,59 +247,56 @@ class RephraseFromSource(AdminScript):
                             if brace_count == 0:
                                 end = i
                                 break
-                    if end != -1:
-                        cleaned = cleaned[start:end+1]
-                    else:
-                        cleaned = cleaned[start:]
+                    cleaned = cleaned[start : end + 1] if end != -1 else cleaned[start:]
                 else:
                     # No JSON found - this is pure reasoning content
                     raise ValueError("No JSON found in response (reasoning only)")
-            
+
             # Try parsing as-is first
             try:
                 rephrased = json.loads(cleaned)
                 return rephrased
             except json.JSONDecodeError:
                 pass
-            
+
             # If that fails, try to fix common issues with newlines in strings
             fixed = []
             in_string = False
             escape_next = False
-            
+
             for char in cleaned:
                 if escape_next:
                     fixed.append(char)
                     escape_next = False
                     continue
-                
+
                 if char == "\\" and in_string:
                     fixed.append(char)
                     escape_next = True
                     continue
-                
+
                 if char == '"' and not escape_next:
                     in_string = not in_string
                     fixed.append(char)
                     continue
-                
+
                 if char == "\n" and in_string:
                     fixed.append("\\n")
                     continue
-                
+
                 fixed.append(char)
-            
+
             fixed_cleaned = "".join(fixed)
-            
+
             # Try parsing again with fixed newlines
             try:
                 rephrased = json.loads(fixed_cleaned)
                 return rephrased
             except json.JSONDecodeError:
                 pass
-            
+
             raise
-            
+
         except (json.JSONDecodeError, AttributeError, ValueError) as e:
             logger.error(
                 "rephrase_json_parse_error",
@@ -312,7 +319,7 @@ class RephraseFromSource(AdminScript):
                 summary=entity_data["orig_summary"],
                 description=entity_data["orig_description"],
             )
-            
+
             rephrased = None
             for attempt in range(DEFAULT_MAX_RETRIES + 1):
                 try:
@@ -331,19 +338,24 @@ class RephraseFromSource(AdminScript):
                         await asyncio.sleep(1)
                         continue
                     break
-            
+
             if rephrased is None:
                 return None
-            
+
             new_name = (rephrased.get("rephrased_name", "") or "").strip()
             new_summary = (rephrased.get("rephrased_summary", "") or "").strip()
             new_description = (rephrased.get("rephrased_description", "") or "").strip()
-            
+
             quality = _validate_rephrased(entity_data, rephrased)
-            
+
             if not new_name:
-                return {"error": "empty_name", "quality": quality, "rephrased": rephrased, "entity_data": entity_data}
-            
+                return {
+                    "error": "empty_name",
+                    "quality": quality,
+                    "rephrased": rephrased,
+                    "entity_data": entity_data,
+                }
+
             return {
                 "success": True,
                 "new_name": new_name,
@@ -367,7 +379,7 @@ class RephraseFromSource(AdminScript):
     ) -> str:
         """Insert entity into DB (not parallel-safe, call sequentially)."""
         from dmo.models.database import Entity
-        
+
         collision_check = text(
             "SELECT 1 FROM entities WHERE source = :target AND source_id = :sid LIMIT 1"
         )
@@ -377,7 +389,7 @@ class RephraseFromSource(AdminScript):
         )
         if collision.scalar():
             return None
-        
+
         entity = Entity(
             source=target_source,
             source_id=new_source_id,
@@ -413,10 +425,10 @@ class RephraseFromSource(AdminScript):
             attributes=entity_data["orig_attributes"],
             is_active=True,
         )
-        
+
         db.add(entity)
         await db.flush()
-        
+
         if entity_data["orig_lat"] is not None and entity_data["orig_lon"] is not None:
             await db.execute(
                 text(
@@ -428,7 +440,7 @@ class RephraseFromSource(AdminScript):
                     eid=entity.id,
                 )
             )
-        
+
         await db.execute(
             text(
                 "INSERT INTO my3pai_rephrased (source, source_id, entity_id) "
@@ -440,29 +452,29 @@ class RephraseFromSource(AdminScript):
                 "eid": str(entity.id),
             },
         )
-        
+
         return str(entity.id)
 
     def _print_sample_outputs(self, samples: list[dict]):
         """Print 5 sample outputs for visual review."""
         print("\n=== Sample Output (Concurrency=5, Dry-Run) ===\n")
-        
+
         for i, sample in enumerate(samples[:5], 1):
             print(f"Entity {i}: {sample['original_name']}")
             print(f"  Original Summary: {sample['original_summary'][:80]}...")
             print(f"  Rephrased Name: {sample['rephrased_name']}")
             print(f"  Rephrased Summary: {sample['rephrased_summary'][:80]}...")
             print(f"  Quality: {'✅ Good' if sample['valid'] else '⚠️ Issues'}")
-            if sample['issues']:
+            if sample["issues"]:
                 print(f"  Issues: {', '.join(sample['issues'])}")
             print()
-        
+
         print("=== Summary ===")
         valid_count = sum(1 for s in samples if s["valid"])
         print(f"- {len(samples)} entities processed")
         print(f"- {valid_count}/{len(samples)} passed quality checks")
         print()
-        
+
         if valid_count == len(samples):
             print("✅ All checks passed — proceed to live run?")
         else:
@@ -565,46 +577,48 @@ class RephraseFromSource(AdminScript):
                 for row in rows:
                     orig_source_id = row[2]
                     new_source_id = f"{prefix}{orig_source_id}"
-                    
+
                     # Skip if already seen (resume support)
                     if new_source_id in seen_source_ids:
                         processed += 1
                         continue
-                    
+
                     seen_source_ids.add(new_source_id)
-                    
-                    entity_batch.append({
-                        "orig_source_id": orig_source_id,
-                        "new_source_id": new_source_id,
-                        "orig_name": row[3] or "",
-                        "orig_summary": row[4] or "",
-                        "orig_description": row[5] or "",
-                        "orig_place_type": row[7] or "",
-                        "orig_secondary_types": row[8],
-                        "orig_lat": row[9],
-                        "orig_lon": row[10],
-                        "orig_country": row[11],
-                        "orig_region": row[12],
-                        "orig_locality": row[13],
-                        "orig_region_names": row[14],
-                        "orig_attributes": row[15] or {},
-                        "orig_source_url": row[16],
-                        "orig_thumbnail": row[17],
-                        "orig_website": row[18],
-                        "orig_is_free": row[19],
-                        "orig_is_open": row[20],
-                        "orig_opening_hours": row[21],
-                        "orig_business_status": row[22],
-                        "orig_phone": row[23],
-                        "orig_email": row[24],
-                        "orig_access_type": row[25],
-                        "orig_season": row[26],
-                        "orig_barrier_free": row[27],
-                        "orig_rating": row[28],
-                        "orig_fav_count": row[29],
-                        "orig_currency": row[30],
-                        "orig_price_level": row[31],
-                    })
+
+                    entity_batch.append(
+                        {
+                            "orig_source_id": orig_source_id,
+                            "new_source_id": new_source_id,
+                            "orig_name": row[3] or "",
+                            "orig_summary": row[4] or "",
+                            "orig_description": row[5] or "",
+                            "orig_place_type": row[7] or "",
+                            "orig_secondary_types": row[8],
+                            "orig_lat": row[9],
+                            "orig_lon": row[10],
+                            "orig_country": row[11],
+                            "orig_region": row[12],
+                            "orig_locality": row[13],
+                            "orig_region_names": row[14],
+                            "orig_attributes": row[15] or {},
+                            "orig_source_url": row[16],
+                            "orig_thumbnail": row[17],
+                            "orig_website": row[18],
+                            "orig_is_free": row[19],
+                            "orig_is_open": row[20],
+                            "orig_opening_hours": row[21],
+                            "orig_business_status": row[22],
+                            "orig_phone": row[23],
+                            "orig_email": row[24],
+                            "orig_access_type": row[25],
+                            "orig_season": row[26],
+                            "orig_barrier_free": row[27],
+                            "orig_rating": row[28],
+                            "orig_fav_count": row[29],
+                            "orig_currency": row[30],
+                            "orig_price_level": row[31],
+                        }
+                    )
 
                 if not entity_batch:
                     break
@@ -625,20 +639,19 @@ class RephraseFromSource(AdminScript):
 
                 # Track results and do DB writes sequentially
                 batch_created = 0
-                batch_inserts = []  # Entities to insert into DB
                 for i, result in enumerate(results):
                     entity_batch[i]
-                    
+
                     if isinstance(result, Exception):
                         errors += 1
                         logger.error("rephrase_llm_error", error=str(result), exc_info=True)
                         continue
-                    
+
                     if result is None:
                         errors += 1
                         logger.warning("rephrase_entity_failed", error="LLM returned None")
                         continue
-                    
+
                     if not result.get("success"):
                         errors += 1
                         error_msg = result.get("error", "unknown")
@@ -646,42 +659,53 @@ class RephraseFromSource(AdminScript):
                         if result.get("quality"):
                             quality_results.append(result["quality"])
                         continue
-                    
+
                     # Successful LLM call
                     success = True
                     entity_data = result["entity_data"]
                     new_source_id = f"{prefix}{entity_data['orig_source_id']}"
-                    
+
                     if not dry_run:
                         # Check collision and insert sequentially
                         eid = await self._insert_entity(
-                            db, entity_data, result["rephrased"],
-                            target_source, new_source_id,
-                            result["new_name"], result["new_summary"], result["new_description"],
+                            db,
+                            entity_data,
+                            result["rephrased"],
+                            target_source,
+                            new_source_id,
+                            result["new_name"],
+                            result["new_summary"],
+                            result["new_description"],
                         )
                         if eid is None:
                             success = False
                             errors += 1
                             logger.warning("rephrase_entity_collision", source_id=new_source_id)
-                    
+
                     if success:
                         created += 1
                         batch_created += 1
-                    
+
                     if result.get("quality"):
                         quality_results.append(result["quality"])
-                    
+
                     if dry_run and len(sample_outputs) < 5:
                         rephrased = result.get("rephrased", {})
                         quality = result.get("quality", {})
-                        sample_outputs.append({
-                            "original_name": entity_data.get("orig_name", ""),
-                            "original_summary": entity_data.get("orig_summary", ""),
-                            "rephrased_name": rephrased.get("rephrased_name", "") if rephrased else "",
-                            "rephrased_summary": rephrased.get("rephrased_summary", "") if rephrased else "",
-                            "valid": quality.get("valid", False) if quality else False,
-                            "issues": quality.get("issues", []) if quality else [],
-                        })
+                        sample_outputs.append(
+                            {
+                                "original_name": entity_data.get("orig_name", ""),
+                                "original_summary": entity_data.get("orig_summary", ""),
+                                "rephrased_name": rephrased.get("rephrased_name", "")
+                                if rephrased
+                                else "",
+                                "rephrased_summary": rephrased.get("rephrased_summary", "")
+                                if rephrased
+                                else "",
+                                "valid": quality.get("valid", False) if quality else False,
+                                "issues": quality.get("issues", []) if quality else [],
+                            }
+                        )
 
                 if not dry_run:
                     await db.commit()
@@ -694,7 +718,7 @@ class RephraseFromSource(AdminScript):
                         pct,
                         f"Processed {processed}/{total_count} "
                         f"(created: {created}, errors: {errors}, "
-                        f"concurrency: {concurrency})"
+                        f"concurrency: {concurrency})",
                     )
 
                 # Print sample outputs for dry-run

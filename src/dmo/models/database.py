@@ -6,8 +6,8 @@ from geoalchemy2.types import Geography, Geometry
 from pydantic import ConfigDict
 from sqlalchemy import (
     ARRAY,
-    BigInteger,
     TIMESTAMP,
+    BigInteger,
     Boolean,
     Column,
     Float,
@@ -297,9 +297,7 @@ class My3paiRephrased(SQLModel, table=True):
     )
     rephrased_at: datetime | None = Field(
         default=None,
-        sa_column=Column(
-            TIMESTAMP(timezone=True), server_default=text("NOW()")
-        ),
+        sa_column=Column(TIMESTAMP(timezone=True), server_default=text("NOW()")),
     )
 
     __table_args__ = (
