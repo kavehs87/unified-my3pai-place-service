@@ -4,7 +4,10 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from dmo.exceptions import AppError
 from dmo.models.database import Entity
+from dmo.services.pagination import encode_cursor
+from dmo.services.search import search
 
 
 @pytest.mark.asyncio
@@ -168,3 +171,100 @@ async def test_search_fulltext_flag(client: AsyncClient, session: AsyncSession):
     assert resp2.status_code == 200
     data2 = resp2.json()
     assert data2["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_search_ranks_exact_name_over_quality(client: AsyncClient, session: AsyncSession):
+    """3a: text relevance dominates; a high quality_score cannot outrank an exact name."""
+    exact = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="rank-1",
+        name="Eiffel Tower",
+        place_type="poi",
+        quality_score=20,
+    )
+    partial = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="rank-2",
+        name="4 level tower",
+        place_type="poi",
+        quality_score=99,
+    )
+    session.add(exact)
+    session.add(partial)
+    await session.commit()
+
+    resp = await client.get("/search?q=eiffel+tower")
+    assert resp.status_code == 200
+    names = [r["name"] for r in resp.json()["results"]]
+    assert names[0] == "Eiffel Tower"
+
+
+@pytest.mark.asyncio
+async def test_search_prominence_breaks_ties(client: AsyncClient, session: AsyncSession):
+    """3a: with equal text relevance, higher quality_score ranks first."""
+    high = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="tie-1",
+        name="Twin Peaks",
+        place_type="poi",
+        quality_score=90,
+    )
+    low = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="tie-2",
+        name="Twin Peaks",
+        place_type="poi",
+        quality_score=10,
+    )
+    session.add(high)
+    session.add(low)
+    await session.flush()
+    high_id = str(high.id)
+    await session.commit()
+
+    resp = await client.get("/search?q=twin+peaks")
+    assert resp.status_code == 200
+    results = resp.json()["results"]
+    assert results[0]["id"] == high_id
+
+
+@pytest.mark.asyncio
+async def test_search_ranked_cursor_pagination(client: AsyncClient, session: AsyncSession):
+    """3a: rank-based cursor paginates without gaps or overlap."""
+    for i in range(5):
+        session.add(
+            Entity(
+                id=uuid4(),
+                source="test",
+                source_id=f"ranked-{i}",
+                name=f"Ranked Place {i}",
+                place_type="poi",
+            )
+        )
+    await session.commit()
+
+    resp1 = await client.get("/search?q=Ranked+Place&page_size=2")
+    data1 = resp1.json()
+    assert len(data1["results"]) == 2
+    assert data1["has_more"] is True
+
+    resp2 = await client.get(f"/search?q=Ranked+Place&page_size=2&cursor={data1['next_cursor']}")
+    data2 = resp2.json()
+    ids1 = {r["id"] for r in data1["results"]}
+    ids2 = {r["id"] for r in data2["results"]}
+    assert len(data2["results"]) == 2
+    assert not (ids1 & ids2)
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_name_cursor_for_ranked_query(session: AsyncSession):
+    """3a: legacy (name-based) cursors are rejected for ranked searches, not 500."""
+    legacy_cursor = encode_cursor(uuid4(), "Some Name")
+    with pytest.raises(AppError) as exc:
+        await search(session, q="test", cursor=legacy_cursor)
+    assert exc.value.code == "InvalidCursor"

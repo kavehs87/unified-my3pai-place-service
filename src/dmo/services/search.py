@@ -1,9 +1,13 @@
 from sqlmodel import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from dmo.exceptions import AppError
 from dmo.models.database import Entity
 from dmo.models.schemas import EntityListItem
 from dmo.services.source_filter import get_disabled_sources, source_not_in_clause
+
+_PROMINENCE_WEIGHT = 0.1
+_SUMMARY_RELEVANCE_WEIGHT = 0.5
 
 
 async def search(
@@ -61,26 +65,68 @@ async def search(
         params["query"] = q
 
     cursor_filter = ""
+    ranked = bool(q)
     if cursor:
         from dmo.services.pagination import decode_cursor
 
-        last_id, last_name = decode_cursor(cursor)
-        cursor_filter = " AND (entities.name > :cursor_name OR (entities.name = :cursor_name AND entities.id > :cursor_id))"
-        params["cursor_name"] = last_name
-        params["cursor_id"] = last_id
+        last_id, last_sort = decode_cursor(cursor)
+        if ranked:
+            if isinstance(last_sort, bool) or not isinstance(last_sort, (int, float)):
+                raise AppError("Invalid cursor format", "InvalidCursor", 400)
+            cursor_filter = (
+                "WHERE t.rank_score < :cursor_rank"
+                " OR (t.rank_score = :cursor_rank AND t.id > :cursor_id)"
+            )
+            params["cursor_rank"] = float(last_sort)
+            params["cursor_id"] = last_id
+        else:
+            cursor_filter = (
+                " AND (entities.name > :cursor_name"
+                " OR (entities.name = :cursor_name AND entities.id > :cursor_id))"
+            )
+            params["cursor_name"] = last_sort
+            params["cursor_id"] = last_id
 
     where_clause = " AND ".join(where_parts)
     fetch_size = page_size + 1
 
-    rows_sql = text(f"""
-        SELECT entities.*,
-               COUNT(*) OVER() AS total
-        FROM entities
-        WHERE {where_clause}
-        {cursor_filter}
-        ORDER BY entities.name ASC, entities.id ASC
-        LIMIT :limit
-    """)
+    if ranked:
+        summary_term = (
+            " + :summary_weight * similarity(COALESCE(entities.summary, ''), :query)"
+            if fulltext
+            else ""
+        )
+        rows_sql = text(f"""
+            SELECT t.*
+            FROM (
+                SELECT entities.*,
+                       COUNT(*) OVER() AS total,
+                       (
+                           similarity(entities.name, :query)
+                           {summary_term}
+                           + :prominence_weight
+                             * (COALESCE(entities.quality_score, 0) / 100.0)
+                       ) AS rank_score
+                FROM entities
+                WHERE {where_clause}
+            ) t
+            {cursor_filter}
+            ORDER BY t.rank_score DESC, t.id ASC
+            LIMIT :limit
+        """)
+        params["prominence_weight"] = _PROMINENCE_WEIGHT
+        if fulltext:
+            params["summary_weight"] = _SUMMARY_RELEVANCE_WEIGHT
+    else:
+        rows_sql = text(f"""
+            SELECT entities.*,
+                   COUNT(*) OVER() AS total
+            FROM entities
+            WHERE {where_clause}{cursor_filter}
+            ORDER BY entities.name ASC, entities.id ASC
+            LIMIT :limit
+        """)
+
     rows_params: dict[str, object] = {"limit": fetch_size}
     rows_params.update(params)
     rows_sql = rows_sql.bindparams(**rows_params)
@@ -95,16 +141,23 @@ async def search(
     rows = rows[:page_size]
 
     items = []
+    ranks: list[float | None] = []
     for row in rows:
-        mapping = {k: v for k, v in row.items() if k not in ("total", "location")}
+        mapping = {
+            k: v for k, v in row.items() if k not in ("total", "location", "rank_score")
+        }
         entity = Entity.model_validate(mapping)
         items.append(EntityListItem.model_validate(entity))
+        ranks.append(row.get("rank_score"))
 
     next_cursor: str | None = None
     if has_more and items:
         from dmo.services.pagination import encode_cursor
 
         last = items[-1]
-        next_cursor = encode_cursor(last.id, last.name)
+        if ranked:
+            next_cursor = encode_cursor(last.id, float(ranks[-1] or 0.0))
+        else:
+            next_cursor = encode_cursor(last.id, last.name)
 
     return items, total, next_cursor, has_more

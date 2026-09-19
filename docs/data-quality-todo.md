@@ -186,3 +186,18 @@ SELECT source, count(*) FROM entities
 2. **Week 2:** DQ-05 (normalize, biggest single fix) and start DQ-08 scheduled enrichment.
 3. **Week 3+:** DQ-07 (OTM enrichment), DQ-09, DQ-10; open DQ-12 decision with a DQ-11 estimate.
 4. Backlog items reviewed monthly.
+
+---
+
+## Search ranking (Option 3a) — implemented 2026-09-19
+
+- **Change:** `/search` with `q` now ranks by
+  `similarity(name, q) [+ 0.5 · similarity(summary, q) when fulltext] + 0.1 · (quality_score / 100)`,
+  tie-broken by `id`. Searches without `q` keep name ordering. Cursor is rank-based `(rank_score, id)`; legacy name-based cursors return `400 InvalidCursor` instead of failing.
+- **Before → after (dev copy, top-5):**
+  - `eiffel tower`: was `38 Eiffel`, `58 Tour Eiffel`, `Abjar Tower (AE)`… → now `Eiffel Tower [opentripmap] (FR)` ×5 (viewpoint/monument)
+  - `Zermatt`: was `5-Seenweg Zermatt` → now the `Zermatt` region first, then Zermatt tours
+  - `hotel` / `pizza` / `museum`: exact-name matches now first (was alphabetical lottery)
+- **Performance:** GIN trigram index still used (Bitmap Index Scan); `eiffel tower` 340–460 ms, `museum` 474 ms, `hotel` ~3.2 s cold on 21.9k candidates (same order as before); API caches for 5 min.
+- **Critical find & fix:** `opentripmap` was missing from `data_sources`, so the `source IN (enabled)` filter silently excluded **all 600k OTM entities** from `/search`, `/nearby` and `/map`. Fixed by migration **016** (registers any active source missing from `data_sources`); opentripmap is now enabled.
+- **Caveat:** `quality_score` is source-skewed (rexby avg 60.7 vs osm 29.4), so the prominence weight is deliberately small (0.1, a tie-breaker). Revisit per-source normalization if ranking skew appears.
