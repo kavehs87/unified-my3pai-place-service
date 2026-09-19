@@ -1,10 +1,8 @@
-import json
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
-from pydantic import TypeAdapter
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.config import settings
@@ -20,19 +18,15 @@ from dmo.models.schemas import (
     MediaCreate,
     UnifiedCategoriesResponse,
 )
-from dmo.services.cache import cache_get_or_set, cache_set_async
-from dmo.services.classifications import (
-    list_categories as list_categories_service,
+from dmo.services.query_api import (
+    cached_classification_categories,
+    cached_classifications,
+    cached_detail,
+    cached_map,
+    cached_nearby,
+    cached_search,
+    cached_unified_categories,
 )
-from dmo.services.classifications import (
-    list_classifications as list_classifications_service,
-)
-from dmo.services.detail import get_detail as get_detail_service
-from dmo.services.detail import get_open_status as get_open_status_service
-from dmo.services.search import search as search_service
-from dmo.services.spatial import map_query as map_query_service
-from dmo.services.spatial import nearby as nearby_service
-from dmo.services.taxonomy import list_categories as list_taxonomy_service
 from dmo.services.write import (
     EntityError,
 )
@@ -94,51 +88,20 @@ async def search_endpoint(
     if (lat is None) != (lon is None):
         raise HTTPException(status_code=422, detail="lat and lon must be provided together")
 
-    if lat is not None and lon is not None:
-        lat = round(lat, 2)
-        lon = round(lon, 2)
-
-    search_params: dict[str, str | int | float | None] = {
-        "q": q,
-        "source": source,
-        "place_type": place_type,
-        "unified_category": unified_category,
-        "country": country,
-        "page_size": page_size,
-        "cursor": cursor,
-        "fulltext": fulltext,
-        "lat": lat,
-        "lon": lon,
-        "bias_radius_km": bias_radius_km,
-    }
-
-    async def _fetch_search() -> str:
-        items, total, next_cursor, has_more = await search_service(
-            session,
-            q,
-            source,
-            place_type,
-            unified_category,
-            country,
-            cursor=cursor,
-            page_size=page_size,
-            fulltext=fulltext,
-            lat=lat,
-            lon=lon,
-            bias_radius_km=bias_radius_km,
-        )
-        result = CursorPaginatedResponse[EntityListItem](
-            results=items, total=total, next_cursor=next_cursor, has_more=has_more
-        )
-        return json.dumps(result.model_dump(mode="json"))
-
-    cached, cache_status = await cache_get_or_set("search", search_params, fetch_fn=_fetch_search)
-    if cached:
-        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
-    else:
-        fallback_json = await _fetch_search()
-        await cache_set_async("search", search_params, fallback_json)
-        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+    result, cache_status = await cached_search(
+        session,
+        q=q,
+        source=source,
+        place_type=place_type,
+        unified_category=unified_category,
+        country=country,
+        page_size=page_size,
+        cursor=cursor,
+        fulltext=fulltext,
+        lat=lat,
+        lon=lon,
+        bias_radius_km=bias_radius_km,
+    )
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )
@@ -156,43 +119,17 @@ async def nearby_endpoint(
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
-    nearby_params = {
-        "lat": lat,
-        "lon": lon,
-        "radius_km": radius_km,
-        "source": source,
-        "place_type": place_type,
-        "unified_category": unified_category,
-        "page_size": page_size,
-        "cursor": cursor,
-    }
-
-    async def _fetch_nearby() -> str:
-        items, total, next_cursor, has_more = await nearby_service(
-            session,
-            lat,
-            lon,
-            radius_km,
-            source,
-            place_type,
-            unified_category,
-            cursor=cursor,
-            page_size=page_size,
-        )
-        result = CursorPaginatedResponse[EntityListItem](
-            results=items, total=total, next_cursor=next_cursor, has_more=has_more
-        )
-        return json.dumps(result.model_dump(mode="json"))
-
-    cached, cache_status = await cache_get_or_set(
-        "nearby", nearby_params, fetch_fn=_fetch_nearby, ttl=300
+    result, cache_status = await cached_nearby(
+        session,
+        lat=lat,
+        lon=lon,
+        radius_km=radius_km,
+        source=source,
+        place_type=place_type,
+        unified_category=unified_category,
+        page_size=page_size,
+        cursor=cursor,
     )
-    if cached:
-        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
-    else:
-        fallback_json = await _fetch_nearby()
-        await cache_set_async("nearby", nearby_params, fallback_json, ttl=300)
-        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )
@@ -221,40 +158,18 @@ async def map_endpoint(
     if min_lon >= max_lon or min_lat >= max_lat:
         raise HTTPException(status_code=422, detail="bbox min must be less than max")
 
-    map_params = {
-        "bbox": bbox,
-        "source": source,
-        "place_type": place_type,
-        "unified_category": unified_category,
-        "page_size": page_size,
-        "cursor": cursor,
-    }
-
-    async def _fetch_map() -> str:
-        items, total, next_cursor, has_more = await map_query_service(
-            session,
-            min_lon,
-            min_lat,
-            max_lon,
-            max_lat,
-            source,
-            place_type,
-            unified_category,
-            cursor=cursor,
-            page_size=page_size,
-        )
-        result = CursorPaginatedResponse[EntityListItem](
-            results=items, total=total, next_cursor=next_cursor, has_more=has_more
-        )
-        return json.dumps(result.model_dump(mode="json"))
-
-    cached, cache_status = await cache_get_or_set("map", map_params, fetch_fn=_fetch_map)
-    if cached:
-        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(cached))
-    else:
-        fallback_json = await _fetch_map()
-        await cache_set_async("map", map_params, fallback_json)
-        result = CursorPaginatedResponse[EntityListItem].model_validate(json.loads(fallback_json))
+    result, cache_status = await cached_map(
+        session,
+        min_lon=min_lon,
+        min_lat=min_lat,
+        max_lon=max_lon,
+        max_lat=max_lat,
+        source=source,
+        place_type=place_type,
+        unified_category=unified_category,
+        page_size=page_size,
+        cursor=cursor,
+    )
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )
@@ -264,17 +179,7 @@ async def map_endpoint(
 async def categories_endpoint(
     session: SessionDep,
 ):
-    async def _fetch_categories() -> str:
-        categories = await list_categories_service(session)
-        return json.dumps(categories)
-
-    cached, cache_status = await cache_get_or_set("categories", {}, fetch_fn=_fetch_categories)
-    if cached:
-        result = TypeAdapter(list[str]).validate_python(json.loads(cached))
-    else:
-        fallback_json = await _fetch_categories()
-        await cache_set_async("categories", {}, fallback_json)
-        result = TypeAdapter(list[str]).validate_python(json.loads(fallback_json))
+    result, cache_status = await cached_classification_categories(session)
     return JSONResponse(content=result, headers={"X-Cache-Status": cache_status})
 
 
@@ -291,34 +196,14 @@ async def classifications_endpoint(
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
 ):
-    classif_params = {
-        "entity_id": entity_id,
-        "category": category,
-        "value_code": value_code,
-        "page_size": page_size,
-        "cursor": cursor,
-    }
-
-    async def _fetch_classifications() -> str:
-        items, total, next_cursor, has_more = await list_classifications_service(
-            session, entity_id, category, value_code, cursor=cursor, page_size=page_size
-        )
-        result = CursorPaginatedResponse[ClassificationListItem](
-            results=items, total=total, next_cursor=next_cursor, has_more=has_more
-        )
-        return json.dumps(result.model_dump(mode="json"))
-
-    cached, cache_status = await cache_get_or_set(
-        "classifications", classif_params, fetch_fn=_fetch_classifications
+    result, cache_status = await cached_classifications(
+        session,
+        entity_id=entity_id,
+        category=category,
+        value_code=value_code,
+        page_size=page_size,
+        cursor=cursor,
     )
-    if cached:
-        result = CursorPaginatedResponse[ClassificationListItem].model_validate(json.loads(cached))
-    else:
-        fallback_json = await _fetch_classifications()
-        await cache_set_async("classifications", classif_params, fallback_json)
-        result = CursorPaginatedResponse[ClassificationListItem].model_validate(
-            json.loads(fallback_json)
-        )
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )
@@ -328,20 +213,7 @@ async def classifications_endpoint(
 async def unified_categories_endpoint(
     session: SessionDep,
 ):
-    async def _fetch_taxonomy() -> str:
-        categories = await list_taxonomy_service(session)
-        result = UnifiedCategoriesResponse(categories=categories)
-        return json.dumps(result.model_dump(mode="json"))
-
-    cached, cache_status = await cache_get_or_set(
-        "unified_categories", {}, fetch_fn=_fetch_taxonomy, ttl=300
-    )
-    if cached:
-        result = UnifiedCategoriesResponse.model_validate(json.loads(cached))
-    else:
-        fallback_json = await _fetch_taxonomy()
-        await cache_set_async("unified_categories", {}, fallback_json, ttl=300)
-        result = UnifiedCategoriesResponse.model_validate(json.loads(fallback_json))
+    result, cache_status = await cached_unified_categories(session)
     return JSONResponse(
         content=result.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )
@@ -353,53 +225,11 @@ async def detail_endpoint(
     source: str,
     source_id: str,
 ):
-    detail_params = {"source": source, "source_id": source_id}
-
-    async def _fetch_detail() -> str:
-        detail = await get_detail_service(session, source, source_id)
-        if not detail:
-            raise HTTPException(status_code=404, detail="Entity not found")
-        detail_dict = detail.model_dump(mode="json")
-        detail_dict["is_open"] = None
-        detail_dict["opens_at"] = None
-        detail_dict["closes_at"] = None
-        return json.dumps(detail_dict)
-
-    cached, cache_status = await cache_get_or_set(
-        "detail", detail_params, fetch_fn=_fetch_detail, ttl=1800
-    )
-    if cached:
-        detail = EntityDetail.model_validate(json.loads(cached))
-    else:
-        detail_json = await _fetch_detail()
-        await cache_set_async("detail", detail_params, detail_json, ttl=1800)
-        detail = EntityDetail.model_validate(json.loads(detail_json))
-
-    async def _fetch_open_status() -> str:
-        open_status = await get_open_status_service(session, source, source_id)
-        if not open_status:
-            return "null"
-        return json.dumps(open_status.model_dump(mode="json"))
-
-    from dmo.models.schemas import OpenStatus
-
-    open_cached, open_cache_status = await cache_get_or_set(
-        "open_status", detail_params, fetch_fn=_fetch_open_status, ttl=60
-    )
-    open_status: OpenStatus | None = None
-    if open_cached and open_cached != "null":
-        open_status = OpenStatus.model_validate(json.loads(open_cached))
-
-    if open_status:
-        detail.is_open = open_status.is_open
-        detail.opens_at = open_status.opens_at
-        detail.closes_at = open_status.closes_at
-
-    combined_status = (
-        cache_status if cache_status == open_cache_status else f"{cache_status}+{open_cache_status}"
-    )
+    detail, cache_status = await cached_detail(session, source, source_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Entity not found")
     return JSONResponse(
-        content=detail.model_dump(mode="json"), headers={"X-Cache-Status": combined_status}
+        content=detail.model_dump(mode="json"), headers={"X-Cache-Status": cache_status}
     )
 
 

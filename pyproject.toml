@@ -21,6 +21,7 @@ dependencies = [
     "aiofiles>=24.0.0,<25.0.0",
     "jinja2>=3.1.0,<4.0.0",
     "python-multipart>=0.0.20,<1.0.0",
+    "mcp==2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -49,6 +50,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+markers = [
+    "live_cache: opt out of the autouse cache-disable patch and use the real Redis cache",
+]
 
 [build-system]
 requires = ["hatchling"]

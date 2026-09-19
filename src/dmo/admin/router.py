@@ -24,6 +24,7 @@ from dmo.admin_scripts.registry import get_script, list_scripts
 from dmo.db import get_session
 from dmo.services.cache import cache_delete_pattern
 from dmo.services.source_filter import invalidate_cache
+from dmo.services.taxonomy import invalidate_taxonomy_cache
 
 logger = structlog.get_logger()
 
@@ -662,6 +663,7 @@ async def admin_taxonomy_create(request: Request, session: AsyncSession = Depend
         await session.rollback()
         return HTMLResponse(f'<div class="toast error">{e}</div>')
 
+    await invalidate_taxonomy_cache()
     return HTMLResponse(f'<div class="toast success">Category "{name}" created</div>')
 
 
@@ -696,6 +698,7 @@ async def admin_taxonomy_update(
         },
     )
     await session.commit()
+    await invalidate_taxonomy_cache()
     return HTMLResponse(f'<div class="toast success">Category "{name}" updated</div>')
 
 
@@ -706,6 +709,7 @@ async def admin_taxonomy_delete(
     stmt = text("UPDATE unified_categories SET is_active = FALSE WHERE id = :id")
     await session.execute(stmt, {"id": category_id})
     await session.commit()
+    await invalidate_taxonomy_cache()
     return HTMLResponse('<div class="toast success">Category deactivated</div>')
 
 

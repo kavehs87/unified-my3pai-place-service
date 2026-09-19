@@ -14,3 +14,6 @@ REQUEST_TOTAL = Counter(
 
 CACHE_HITS = Counter("cache_hits_total", "Total cache hits")
 CACHE_MISSES = Counter("cache_misses_total", "Total cache misses")
+
+MCP_TOOL_CALLS = Counter("mcp_tool_calls_total", "MCP tool calls", ["tool", "status"])
+MCP_TOOL_DURATION = Histogram("mcp_tool_call_duration_seconds", "MCP tool call duration", ["tool"])

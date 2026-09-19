@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
@@ -53,4 +54,23 @@ async def get_session(timeout_override: float | None = None) -> AsyncGenerator[A
 
 async def get_write_session() -> AsyncGenerator[AsyncSession, None]:
     async for session in get_session(timeout_override=settings.request_timeout_seconds):
+        yield session
+
+
+@asynccontextmanager
+async def read_session() -> AsyncGenerator[AsyncSession, None]:
+    """Short-lived read session for non-HTTP callers (MCP tools).
+
+    Mirrors ``get_session`` (read statement timeout) without FastAPI
+    dependency injection, so each tool call gets its own pooled connection.
+    """
+    if async_session is None:
+        get_engine()
+    async with async_session() as session:
+        timeout_ms = int(settings.query_timeout_seconds * 1000)
+        await session.execute(
+            text("SELECT set_config('statement_timeout', :timeout, false)").bindparams(
+                timeout=str(timeout_ms)
+            )
+        )
         yield session

@@ -1,14 +1,17 @@
+import json
+
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.models.database import Entity, UnifiedCategory
 from dmo.models.schemas import UnifiedCategoryItem
+from dmo.services import cache as cache_module
 
-_category_level_cache: dict[str, str] | None = None
+_LEVELS_TTL = 60
 
 
 async def _build_level_cache(session: AsyncSession) -> dict[str, str]:
-    """Build in-memory cache of slug → level (top/leaf) for filter auto-detection."""
+    """Build slug → level (top/leaf) map for filter auto-detection."""
     stmt = select(UnifiedCategory.slug, UnifiedCategory.parent_id).where(
         col(UnifiedCategory.is_active)
     )
@@ -17,12 +20,47 @@ async def _build_level_cache(session: AsyncSession) -> dict[str, str]:
     return {row[0]: "top" if row[1] is None else "leaf" for row in rows}
 
 
+async def _get_levels(session: AsyncSession) -> dict[str, str]:
+    """Read the level map from the shared cache, rebuilding on miss.
+
+    Redis-backed (60s TTL) so every worker sees taxonomy edits; the cache key
+    is deleted by ``invalidate_taxonomy_cache`` on taxonomy mutations.
+    """
+
+    async def _fetch() -> str:
+        return json.dumps(await _build_level_cache(session))
+
+    cached, _ = await cache_module.cache_get_or_set(
+        "taxonomy_levels", {}, fetch_fn=_fetch, ttl=_LEVELS_TTL
+    )
+    if cached:
+        return json.loads(cached)
+    return await _build_level_cache(session)
+
+
 async def get_category_level(session: AsyncSession, slug: str) -> str | None:
     """Return 'top' or 'leaf' for a given slug, or None if not found."""
-    global _category_level_cache
-    if _category_level_cache is None:
-        _category_level_cache = await _build_level_cache(session)
-    return _category_level_cache.get(slug)
+    levels = await _get_levels(session)
+    return levels.get(slug)
+
+
+async def invalidate_taxonomy_cache() -> None:
+    """Clear taxonomy-derived caches after a taxonomy mutation.
+
+    Covers the taxonomy tree, the slug→level map, and every list surface that
+    filters on ``unified_category`` (re-parenting a slug changes which column
+    existing queries match).
+    """
+    for pattern in (
+        "dmo:unified_categories:*",
+        "dmo:taxonomy_levels:*",
+        "dmo:search:*",
+        "dmo:nearby:*",
+        "dmo:map:*",
+        "dmo:classifications:*",
+        "dmo:categories:*",
+    ):
+        await cache_module.cache_delete_pattern(pattern)
 
 
 async def list_categories(

@@ -35,6 +35,7 @@ async def invalidate_entity_caches(entity_id: UUID) -> None:
         "dmo:map:*",
         "dmo:classifications:*",
         "dmo:categories:*",
+        "dmo:unified_categories:*",
     ):
         await cache_delete_pattern(pattern)
 

@@ -9,6 +9,11 @@ test_db_url = os.environ.get(
 os.environ["DATABASE_URL"] = test_db_url
 os.environ["DATABASE_URL_SYNC"] = test_db_url.replace("asyncpg", "psycopg2")
 os.environ["REDIS_URL"] = os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/0")
+# MCP route must be mounted before dmo.main is imported. The ASGI test client
+# sends `Host: test`, which must be in the DNS-rebinding allowlist.
+os.environ["MCP_ENABLED"] = "true"
+os.environ["MCP_ALLOWED_HOSTS"] = '["test", "test:*"]'
+os.environ.setdefault("API_KEY", "test-key")
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -60,8 +65,11 @@ async def _assert_test_db_safe(eng) -> None:
 
 @pytest.fixture(autouse=True)
 def _disable_cache(request):
-    """Disable caching during tests."""
-    import dmo.api.router as router_module
+    """Disable caching during tests.
+
+    Tests marked ``@pytest.mark.live_cache`` opt out entirely and exercise the
+    real Redis-backed cache (shared-key and invalidation tests).
+    """
     import dmo.services.cache as cache_module
     import dmo.services.write as write_module
 
@@ -87,6 +95,12 @@ def _disable_cache(request):
     # Clear disabled sources cache at start of each test
     _invalidate_source_cache()
 
+    is_live_cache = request.node.get_closest_marker("live_cache") is not None
+    if is_live_cache:
+        yield
+        _invalidate_source_cache()
+        return
+
     # Don't patch cache_delete_pattern for cache tests
     is_cache_test = "test_cache" in (request.node.module.__name__ if request.node.module else "")
 
@@ -97,10 +111,6 @@ def _disable_cache(request):
         write_module.cache_delete_pattern = _no_op_delete_pattern
     if not is_stampede:
         cache_module.cache_get_or_set = _no_op_get_or_set
-    router_module.cache_get = _no_op_get
-    router_module.cache_set = _no_op_set
-    if not is_stampede:
-        router_module.cache_get_or_set = _no_op_get_or_set
 
     yield
 
@@ -111,9 +121,6 @@ def _disable_cache(request):
     if not is_cache_test:
         cache_module.cache_delete_pattern = _orig_cache_delete_pattern
         write_module.cache_delete_pattern = _orig_cache_delete_pattern
-    router_module.cache_get = _orig_cache_get
-    router_module.cache_set = _orig_cache_set
-    router_module.cache_get_or_set = _orig_cache_get_or_set
     _invalidate_source_cache()
 
 
@@ -180,6 +187,41 @@ async def _cleanup_test_taxonomy(s: AsyncSession) -> None:
         )
     )
     await s.exec(text("DELETE FROM unified_categories WHERE slug LIKE 'test\\_%'"))
+
+
+@pytest.fixture(scope="session")
+async def mcp_manager():
+    """Run the MCP session manager once per test session.
+
+    ``session_manager.run()`` can only be entered once per instance, and its
+    anyio cancel scope must be exited by the task that entered it — so it runs
+    in a long-lived task that cancels itself at teardown.
+    """
+    import asyncio
+    import contextlib
+
+    from dmo.mcp.server import mcp
+
+    started = asyncio.Event()
+
+    async def _run_forever() -> None:
+        async with mcp.session_manager.run():
+            started.set()
+            await asyncio.Event().wait()
+
+    task = asyncio.create_task(_run_forever())
+    await started.wait()
+    yield
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+@pytest.fixture
+async def mcp_client(mcp_manager) -> AsyncClient:
+    """HTTP client for the MCP endpoint (``POST /mcp``)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        yield ac
 
 
 @pytest.fixture

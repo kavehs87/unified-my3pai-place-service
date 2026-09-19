@@ -88,6 +88,12 @@ Paginated responses: `{ results: [...], total: N, next_cursor: "...", has_more: 
 
 Cursor pagination uses base64-encoded JSON with helpers in `services/pagination.py`. `fulltext=true` extends search to `summary` (slower on cold cache, opt-in).
 
+### MCP (read-only, optional)
+
+`POST /mcp` speaks the Model Context Protocol (Streamable HTTP, stateless JSON mode) and exposes the Read API as seven read-only tools: `search_places`, `find_nearby`, `map_bounding_box`, `get_place`, `list_unified_categories`, `list_classifications`, `list_classification_categories`. Tools share the REST Redis cache entries and accept `MCP_DEFAULT_PAGE_SIZE` (10) / `MCP_MAX_PAGE_SIZE` (50) page sizes.
+
+Disabled by default (`MCP_ENABLED=false`). See [docs/mcp.md](docs/mcp.md) for client configuration, the DNS-rebinding host allowlist, and examples.
+
 ### Write (requires `X-API-Key`)
 
 ```

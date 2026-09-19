@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     cache_debug: bool = False
     disabled_sources: list[str] = []
 
+    mcp_enabled: bool = False
+    mcp_path: str = "/mcp"
+    mcp_default_page_size: int = 10
+    mcp_max_page_size: int = 50
+    mcp_write_tools_enabled: bool = False
+    mcp_allowed_hosts: list[str] = []
+    mcp_allowed_origins: list[str] = []
+    mcp_detail_max_media: int = 20
+    mcp_detail_max_classifications: int = 50
+
     admin_username: str = "admin"
     admin_password: str = "admin"
     admin_settings_path: str = "/data/admin_settings.json"

@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.routing import Route
 
 from dmo.admin.router import router as admin_router
 from dmo.api.health import health_router
@@ -39,7 +40,12 @@ async def lifespan(app: FastAPI):
     from dmo.db import get_engine
 
     get_engine()
-    yield
+    async with AsyncExitStack() as stack:
+        if settings.mcp_enabled:
+            from dmo.mcp.server import mcp
+
+            await stack.enter_async_context(mcp.session_manager.run())
+        yield
     if _cache is not None:
         await _cache.close()
     from dmo.db import _engine
@@ -141,6 +147,11 @@ app.include_router(admin_router)
 
 _static_dir = os.path.join(os.path.dirname(__file__), "admin", "static")
 app.mount("/admin/static", StaticFiles(directory=_static_dir), name="admin_static")
+
+if settings.mcp_enabled:
+    from dmo.mcp.server import mcp_app
+
+    app.router.routes.append(Route(settings.mcp_path, endpoint=mcp_app))
 
 app.include_router(router)
 app.include_router(health_router)
