@@ -2,6 +2,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from dmo.exceptions import AppError
@@ -268,3 +269,176 @@ async def test_search_rejects_name_cursor_for_ranked_query(session: AsyncSession
     with pytest.raises(AppError) as exc:
         await search(session, q="test", cursor=legacy_cursor)
     assert exc.value.code == "InvalidCursor"
+
+
+@pytest.mark.asyncio
+async def test_search_bias_prefers_nearby(client: AsyncClient, session: AsyncSession):
+    """3b: with equal relevance/quality, the entity near the bias point ranks first."""
+    near = Entity(
+        id=uuid4(), source="test", source_id="bias-1", name="Bias Cafe", place_type="cafe"
+    )
+    far = Entity(id=uuid4(), source="test", source_id="bias-2", name="Bias Cafe", place_type="cafe")
+    session.add(near)
+    session.add(far)
+    await session.flush()
+    near_id, far_id = near.id, far.id
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(8.54, 47.37), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=near_id)
+    )
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(151.2, -33.86), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=far_id)
+    )
+    await session.commit()
+
+    resp = await client.get("/search?q=Bias+Cafe&lat=47.37&lon=8.54")
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["id"] == str(near_id)
+
+
+@pytest.mark.asyncio
+async def test_search_bias_does_not_bury_exact_name(client: AsyncClient, session: AsyncSession):
+    """3b: the bias is soft — an exact far-away name still beats a weak nearby match."""
+    exact = Entity(
+        id=uuid4(), source="test", source_id="soft-1", name="Eiffel Tower", place_type="landmark"
+    )
+    nearby_weak = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="soft-2",
+        name="Eiffel Tower Restaurant Zurich",
+        place_type="restaurant",
+    )
+    session.add(exact)
+    session.add(nearby_weak)
+    await session.flush()
+    exact_id, weak_id = exact.id, nearby_weak.id
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(2.2945, 48.8584), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=exact_id)
+    )
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(8.54, 47.37), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=weak_id)
+    )
+    await session.commit()
+
+    resp = await client.get("/search?q=eiffel+tower&lat=47.37&lon=8.54")
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["id"] == str(exact_id)
+
+
+@pytest.mark.asyncio
+async def test_search_bias_requires_lat_and_lon_together(client: AsyncClient):
+    resp = await client.get("/search?q=test&lat=47.37")
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_radius_tier_prefers_local_weak_over_far_exact(
+    client: AsyncClient, session: AsyncSession
+):
+    """3b/C: with a radius, local matches are tiered above far exact names."""
+    far_exact = Entity(
+        id=uuid4(), source="test", source_id="tier-1", name="Tier Cafe", place_type="cafe"
+    )
+    local_weak = Entity(
+        id=uuid4(), source="test", source_id="tier-2", name="Tier Cafe Zurich", place_type="cafe"
+    )
+    session.add(far_exact)
+    session.add(local_weak)
+    await session.flush()
+    far_id, local_id = far_exact.id, local_weak.id
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(151.2, -33.86), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=far_id)
+    )
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(8.54, 47.37), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=local_id)
+    )
+    await session.commit()
+
+    resp_soft = await client.get("/search?q=Tier+Cafe&lat=47.37&lon=8.54")
+    assert resp_soft.json()["results"][0]["id"] == str(far_id)
+
+    resp_tier = await client.get("/search?q=Tier+Cafe&lat=47.37&lon=8.54&bias_radius_km=10")
+    assert resp_tier.json()["results"][0]["id"] == str(local_id)
+
+
+@pytest.mark.asyncio
+async def test_search_radius_tier_cursor_pagination(client: AsyncClient, session: AsyncSession):
+    """3b/C: tiered cursor pagination walks local matches first, without overlap."""
+    local_ids = []
+    for i in range(3):
+        entity = Entity(
+            id=uuid4(),
+            source="test",
+            source_id=f"ring-local-{i}",
+            name=f"Ring Place Local {i}",
+            place_type="poi",
+        )
+        session.add(entity)
+        await session.flush()
+        local_ids.append(str(entity.id))
+        await session.exec(
+            text(
+                "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(8.54, 47.37), 4326)::geography"
+                " WHERE id = :id"
+            ).bindparams(id=entity.id)
+        )
+    for i in range(3):
+        entity = Entity(
+            id=uuid4(),
+            source="test",
+            source_id=f"ring-far-{i}",
+            name=f"Ring Place Far {i}",
+            place_type="poi",
+        )
+        session.add(entity)
+        await session.flush()
+        await session.exec(
+            text(
+                "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(151.2, -33.86), 4326)::geography"
+                " WHERE id = :id"
+            ).bindparams(id=entity.id)
+        )
+    await session.commit()
+
+    resp1 = await client.get(
+        "/search?q=Ring+Place&page_size=2&lat=47.37&lon=8.54&bias_radius_km=10"
+    )
+    data1 = resp1.json()
+    page1_ids = [r["id"] for r in data1["results"]]
+    assert all(pid in local_ids for pid in page1_ids)
+
+    resp2 = await client.get(
+        f"/search?q=Ring+Place&page_size=2&lat=47.37&lon=8.54&bias_radius_km=10"
+        f"&cursor={data1['next_cursor']}"
+    )
+    data2 = resp2.json()
+    ids2 = {r["id"] for r in data2["results"]}
+    assert not (set(page1_ids) & ids2)
+
+
+@pytest.mark.asyncio
+async def test_search_radius_tier_rejects_soft_bias_cursor(session: AsyncSession):
+    """3b: cursors minted in soft-bias mode are invalid for tiered requests (and vice versa)."""
+    legacy_rank_cursor = encode_cursor(uuid4(), 0.5)
+    with pytest.raises(AppError):
+        await search(
+            session, q="test", lat=47.37, lon=8.54, bias_radius_km=10, cursor=legacy_rank_cursor
+        )

@@ -8,6 +8,8 @@ from dmo.services.source_filter import get_disabled_sources, source_not_in_claus
 
 _PROMINENCE_WEIGHT = 0.1
 _SUMMARY_RELEVANCE_WEIGHT = 0.5
+_GEO_WEIGHT = 0.35
+_DEFAULT_BIAS_SCALE_KM = 50.0
 
 
 async def search(
@@ -20,12 +22,16 @@ async def search(
     page_size: int = 20,
     cursor: str | None = None,
     fulltext: bool = False,
+    lat: float | None = None,
+    lon: float | None = None,
+    bias_radius_km: float | None = None,
 ) -> tuple[list[EntityListItem], int, str | None, bool]:
     """Full-text search with filters and cursor pagination.
 
     Uses pg_trgm for text matching on name field by default.
     When fulltext=True, also searches summary field (slower on cold cache).
     Auto-detects unified_category level (top/leaf) for filtering.
+    Optional lat/lon add a soft proximity boost (bias, never a filter).
     Returns (items, total, next_cursor, has_more).
     """
     await get_disabled_sources(session)
@@ -66,18 +72,37 @@ async def search(
 
     cursor_filter = ""
     ranked = bool(q)
+    tiered = lat is not None and lon is not None and bias_radius_km is not None
+    cursor_tier: int | None = None
     if cursor:
         from dmo.services.pagination import decode_cursor
 
         last_id, last_sort = decode_cursor(cursor)
         if ranked:
-            if isinstance(last_sort, bool) or not isinstance(last_sort, (int, float)):
+            if isinstance(last_sort, str) and ":" in last_sort:
+                tier_part, rank_part = last_sort.split(":", 1)
+                cursor_tier = int(tier_part)
+                cursor_rank = float(rank_part)
+            elif isinstance(last_sort, (int, float)) and not isinstance(last_sort, bool):
+                cursor_rank = float(last_sort)
+            else:
                 raise AppError("Invalid cursor format", "InvalidCursor", 400)
-            cursor_filter = (
-                "WHERE t.rank_score < :cursor_rank"
-                " OR (t.rank_score = :cursor_rank AND t.id > :cursor_id)"
-            )
-            params["cursor_rank"] = float(last_sort)
+            if tiered != (cursor_tier is not None):
+                raise AppError("Invalid cursor format", "InvalidCursor", 400)
+            if tiered:
+                cursor_filter = (
+                    "WHERE (COALESCE(t.within_radius, 0) < :cursor_tier)"
+                    " OR (COALESCE(t.within_radius, 0) = :cursor_tier"
+                    " AND (t.rank_score < :cursor_rank"
+                    " OR (t.rank_score = :cursor_rank AND t.id > :cursor_id)))"
+                )
+                params["cursor_tier"] = cursor_tier
+            else:
+                cursor_filter = (
+                    "WHERE t.rank_score < :cursor_rank"
+                    " OR (t.rank_score = :cursor_rank AND t.id > :cursor_id)"
+                )
+            params["cursor_rank"] = cursor_rank
             params["cursor_id"] = last_id
         else:
             cursor_filter = (
@@ -96,6 +121,33 @@ async def search(
             if fulltext
             else ""
         )
+        geo_term = ""
+        tier_select = ""
+        if lat is not None and lon is not None:
+            geo_term = (
+                " + :geo_weight * CASE WHEN entities.location IS NOT NULL THEN"
+                " 1.0 / (1.0 + ST_DistanceSphere("
+                "entities.location::geometry,"
+                " ST_SetSRID(ST_MakePoint(:bias_lon, :bias_lat), 4326)"
+                ") / 1000.0 / :bias_scale_km) ELSE 0.0 END"
+            )
+            params["geo_weight"] = _GEO_WEIGHT
+            params["bias_lon"] = lon
+            params["bias_lat"] = lat
+            params["bias_scale_km"] = bias_radius_km or _DEFAULT_BIAS_SCALE_KM
+            if tiered and bias_radius_km is not None:
+                tier_select = (
+                    ", CASE WHEN entities.location IS NOT NULL AND ST_DWithin("
+                    "entities.location,"
+                    " ST_SetSRID(ST_MakePoint(:bias_lon, :bias_lat), 4326)::geography,"
+                    " :bias_radius_m) THEN 1 ELSE 0 END AS within_radius"
+                )
+                params["bias_radius_m"] = bias_radius_km * 1000
+        order_clause = (
+            "t.within_radius DESC, t.rank_score DESC, t.id ASC"
+            if tiered
+            else "t.rank_score DESC, t.id ASC"
+        )
         rows_sql = text(f"""
             SELECT t.*
             FROM (
@@ -106,12 +158,14 @@ async def search(
                            {summary_term}
                            + :prominence_weight
                              * (COALESCE(entities.quality_score, 0) / 100.0)
+                           {geo_term}
                        ) AS rank_score
+                       {tier_select}
                 FROM entities
                 WHERE {where_clause}
             ) t
             {cursor_filter}
-            ORDER BY t.rank_score DESC, t.id ASC
+            ORDER BY {order_clause}
             LIMIT :limit
         """)
         params["prominence_weight"] = _PROMINENCE_WEIGHT
@@ -142,13 +196,17 @@ async def search(
 
     items = []
     ranks: list[float | None] = []
+    tiers: list[int | None] = []
     for row in rows:
         mapping = {
-            k: v for k, v in row.items() if k not in ("total", "location", "rank_score")
+            k: v
+            for k, v in row.items()
+            if k not in ("total", "location", "rank_score", "within_radius")
         }
         entity = Entity.model_validate(mapping)
         items.append(EntityListItem.model_validate(entity))
         ranks.append(row.get("rank_score"))
+        tiers.append(row.get("within_radius"))
 
     next_cursor: str | None = None
     if has_more and items:
@@ -156,7 +214,11 @@ async def search(
 
         last = items[-1]
         if ranked:
-            next_cursor = encode_cursor(last.id, float(ranks[-1] or 0.0))
+            rank_value = float(ranks[-1] or 0.0)
+            if tiered:
+                next_cursor = encode_cursor(last.id, f"{int(tiers[-1] or 0)}:{rank_value}")
+            else:
+                next_cursor = encode_cursor(last.id, rank_value)
         else:
             next_cursor = encode_cursor(last.id, last.name)
 

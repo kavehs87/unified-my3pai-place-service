@@ -201,3 +201,20 @@ SELECT source, count(*) FROM entities
 - **Performance:** GIN trigram index still used (Bitmap Index Scan); `eiffel tower` 340–460 ms, `museum` 474 ms, `hotel` ~3.2 s cold on 21.9k candidates (same order as before); API caches for 5 min.
 - **Critical find & fix:** `opentripmap` was missing from `data_sources`, so the `source IN (enabled)` filter silently excluded **all 600k OTM entities** from `/search`, `/nearby` and `/map`. Fixed by migration **016** (registers any active source missing from `data_sources`); opentripmap is now enabled.
 - **Caveat:** `quality_score` is source-skewed (rexby avg 60.7 vs osm 29.4), so the prominence weight is deliberately small (0.1, a tie-breaker). Revisit per-source normalization if ranking skew appears.
+
+---
+
+## Search location bias (Option 3b: A + C) — implemented 2026-09-19
+
+**API (DMO only, additive):** `/search` accepts optional `lat`, `lon`, `bias_radius_km`.
+`lat`/`lon` must be provided together (422 otherwise) and are rounded to 2 decimals for cache stability.
+
+- **A — soft bias** (`lat`+`lon` only): rank gains `+0.35 · 1/(1 + km/bias_scale)` (default scale 50 km) for entities with coordinates. Named entities stay safe: Putrajaya/Zurich + `eiffel tower` → Paris landmark first (local max similarity near Zurich is 0.37).
+- **C — radius tier** (`lat`+`lon`+`bias_radius_km`): results inside the radius form a first tier ordered by rank, then global results fill below. Evidence: Zurich + `hotel` + r=10 km → top-5 all Zurich hotels (before: Berlin/London exacts). Putrajaya + `eiffel tower` + r=10 km → Paris (no local matches).
+- Cursor is tier-aware (`tier:rank` composite); cursors minted in one mode are rejected in the other (`400 InvalidCursor`).
+- Latency (cold, dev copy): soft bias 0.4–3.0 s; tiered 0.5–3.9 s depending on candidate count; API caches 5 min.
+
+**Consumer integration (not yet done — Laravel + website):**
+1. `../api` — accept `lat`/`lon`/`bias_radius_km` in `UnifiedPlaceSearchRequest` and forward via `UnifiedPlaceService::search` (already a passthrough array).
+2. Website — `getPlacePredictions(input, { lat, lon, radiusKm })` from the map center; `getRadiusForZoom()` already exists in `MapCreatorRoot`.
+3. Until they pass coordinates, behavior is unchanged (3a ranking only).

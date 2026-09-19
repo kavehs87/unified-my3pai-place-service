@@ -85,8 +85,20 @@ async def search_endpoint(
     page_size: int = Query(20, ge=1, le=100),
     cursor: str | None = Query(None, max_length=500),
     fulltext: bool = Query(False, description="Include summary field in text search (slower)"),
+    lat: float | None = Query(None, ge=-90, le=90, description="Soft location bias latitude"),
+    lon: float | None = Query(None, ge=-180, le=180, description="Soft location bias longitude"),
+    bias_radius_km: float | None = Query(
+        None, gt=0, le=500, description="Distance scale for the soft location bias"
+    ),
 ):
-    search_params = {
+    if (lat is None) != (lon is None):
+        raise HTTPException(status_code=422, detail="lat and lon must be provided together")
+
+    if lat is not None and lon is not None:
+        lat = round(lat, 2)
+        lon = round(lon, 2)
+
+    search_params: dict[str, str | int | float | None] = {
         "q": q,
         "source": source,
         "place_type": place_type,
@@ -95,6 +107,9 @@ async def search_endpoint(
         "page_size": page_size,
         "cursor": cursor,
         "fulltext": fulltext,
+        "lat": lat,
+        "lon": lon,
+        "bias_radius_km": bias_radius_km,
     }
 
     async def _fetch_search() -> str:
@@ -108,6 +123,9 @@ async def search_endpoint(
             cursor=cursor,
             page_size=page_size,
             fulltext=fulltext,
+            lat=lat,
+            lon=lon,
+            bias_radius_km=bias_radius_km,
         )
         result = CursorPaginatedResponse[EntityListItem](
             results=items, total=total, next_cursor=next_cursor, has_more=has_more
