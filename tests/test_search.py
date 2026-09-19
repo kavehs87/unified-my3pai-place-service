@@ -442,3 +442,47 @@ async def test_search_radius_tier_rejects_soft_bias_cursor(session: AsyncSession
         await search(
             session, q="test", lat=47.37, lon=8.54, bias_radius_km=10, cursor=legacy_rank_cursor
         )
+
+
+@pytest.mark.asyncio
+async def test_search_bias_keeps_canonical_name_over_closer_namesake(
+    client: AsyncClient, session: AsyncSession
+):
+    """3b: proximity must not promote a low-quality namesake over the canonical entity."""
+    canonical = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="namesake-1",
+        name="Eiffel Tower",
+        place_type="landmark",
+        quality_score=71,
+    )
+    namesake = Entity(
+        id=uuid4(),
+        source="test",
+        source_id="namesake-2",
+        name="Eiffel Tower",
+        place_type="hotel",
+        quality_score=30,
+    )
+    session.add(canonical)
+    session.add(namesake)
+    await session.flush()
+    canonical_id, namesake_id = canonical.id, namesake.id
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(2.2945, 48.8584), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=canonical_id)
+    )
+    await session.exec(
+        text(
+            "UPDATE entities SET location = ST_SetSRID(ST_MakePoint(28.0, 43.28), 4326)::geography"
+            " WHERE id = :id"
+        ).bindparams(id=namesake_id)
+    )
+    await session.commit()
+
+    resp = await client.get("/search?q=eiffel+tower&lat=41.0082&lon=28.9784")
+    assert resp.status_code == 200
+    assert resp.json()["results"][0]["id"] == str(canonical_id)

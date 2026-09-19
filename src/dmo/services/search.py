@@ -6,7 +6,7 @@ from dmo.models.database import Entity
 from dmo.models.schemas import EntityListItem
 from dmo.services.source_filter import get_disabled_sources, source_not_in_clause
 
-_PROMINENCE_WEIGHT = 0.1
+_PROMINENCE_WEIGHT = 0.15
 _SUMMARY_RELEVANCE_WEIGHT = 0.5
 _GEO_WEIGHT = 0.35
 _DEFAULT_BIAS_SCALE_KM = 50.0

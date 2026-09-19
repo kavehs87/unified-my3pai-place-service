@@ -218,3 +218,5 @@ SELECT source, count(*) FROM entities
 1. `../api` — accept `lat`/`lon`/`bias_radius_km` in `UnifiedPlaceSearchRequest` and forward via `UnifiedPlaceService::search` (already a passthrough array).
 2. Website — `getPlacePredictions(input, { lat, lon, radiusKm })` from the map center; `getRadiusForZoom()` already exists in `MapCreatorRoot`.
 3. Until they pass coordinates, behavior is unchanged (3a ranking only).
+
+**Tuning note (namesake case, 2026-09-19):** the frontend pilot found `eiffel tower` from Istanbul returning the Golden Sands (BG) namesake — quality 30, no Wikidata — ahead of the Paris landmark (Q243, quality 71), because the geo bonus exceeded the prominence gap. Prominence weight raised **0.10 → 0.15**; canonical entities now win namesake collisions while all other validated cases are unchanged (Zurich `museum` still local-first, Zurich `hotel` r10 still tiered, Putrajaya/Zurich `eiffel tower` still Paris). Regression test: `test_search_bias_keeps_canonical_name_over_closer_namesake`.
