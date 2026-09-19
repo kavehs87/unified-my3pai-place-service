@@ -6,6 +6,7 @@ from urllib.parse import quote
 import httpx
 
 from dmo.admin_scripts.base import AdminScript, ScriptMeta, ScriptParameter, ScriptResult
+from dmo.admin_scripts.country_data import resolve_country
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +17,17 @@ SECONDARY_WIKI_PATTERN = re.compile(r"^osm_(.+):(\w+)$")
 class EnrichFromWikidata(AdminScript):
     meta = ScriptMeta(
         name="enrich_from_wikidata",
-        description="Enrich OSM entities using Wikidata/Wikipedia APIs. Uses osm_wikidata, osm_wikimedia_commons, osm_wikipedia, and secondary keys (osm_artist:wikidata, osm_subject:wikidata, etc.). Fetches description, summary, website, thumbnail, address, country, opening_hours, phone, email.",
+        description="Enrich entities using Wikidata/Wikipedia APIs. OSM uses osm_wikidata, osm_wikimedia_commons, osm_wikipedia and secondary keys; opentripmap uses otm_wikidata. Fetches description, summary, website, thumbnail, address, country, opening_hours, phone, email. Only fills empty fields; country values are normalized to ISO2.",
         category="Enrich",
         parameters=[
+            ScriptParameter(
+                name="source",
+                type="select",
+                label="Source",
+                options=["osm", "opentripmap"],
+                default="osm",
+                description="Entity source to enrich",
+            ),
             ScriptParameter(
                 name="max_entities",
                 type="int",
@@ -52,8 +61,8 @@ class EnrichFromWikidata(AdminScript):
                 name="user_agent",
                 type="text",
                 label="User-Agent",
-                default="DMO-Enricher/1.0",
-                description="User-Agent header for API requests",
+                default="my3pai-dmo-enricher/1.0 (https://my3p.ai)",
+                description="User-Agent header (Wikimedia requires a descriptive UA with contact info)",
             ),
             ScriptParameter(
                 name="entity_id",
@@ -69,12 +78,12 @@ class EnrichFromWikidata(AdminScript):
     P_OFFICIAL_WEBSITE = "P856"
     P_IMAGE = "P18"
     P_COORDINATES = "P625"
-    P_STREET_ADDRESS = "P682"
+    P_STREET_ADDRESS = "P6375"
     P_LOCATED_IN_THE_TERRITORIAL_ENTITY = "P131"
     P_COUNTRY = "P17"
-    P_OPENING_HOURS = "P1412"
-    P_PHONE = "P426"
-    P_EMAIL = "P479"
+    P_OPENING_HOURS: str | None = None  # no single Wikidata property covers opening hours
+    P_PHONE = "P1329"
+    P_EMAIL = "P968"
 
     WIKIDATA_API = "https://www.wikidata.org/w/api.php"
     WIKIPEDIA_REST = "https://{lang}.wikipedia.org/api/rest_v1/page/extract/{title}"
@@ -122,8 +131,16 @@ class EnrichFromWikidata(AdminScript):
         "email": 255,
     }
 
-    def _set_field(self, updates: dict, field: str, value: str) -> None:
-        """Set field in updates dict, truncating to column limit."""
+    def _set_field(self, updates: dict, field: str, value) -> None:
+        """Set field in updates dict, truncating to column limit.
+
+        Skips non-string claim values (entity/quantity/time references) so a
+        single malformed claim can never break a whole batch.
+        """
+        if isinstance(value, (int, float)):
+            value = str(value)
+        if not isinstance(value, str) or not value:
+            return
         limit = self.FIELD_LIMITS.get(field)
         if limit and len(value) > limit:
             value = value[:limit]
@@ -167,7 +184,11 @@ class EnrichFromWikidata(AdminScript):
 
         # thumbnail_url <- P18 (Commons image)
         commons_file = self._extract_claim_value(claims, self.P_IMAGE)
-        if commons_file and entity_attrs.get("thumbnail_url") is None:
+        if (
+            commons_file
+            and isinstance(commons_file, str)
+            and entity_attrs.get("thumbnail_url") is None
+        ):
             file_title = quote(commons_file, safe=":/@!$&'()*+,;=-._~%")
             self._set_field(
                 updates,
@@ -175,10 +196,15 @@ class EnrichFromWikidata(AdminScript):
                 f"https://commons.wikimedia.org/wiki/Special:FilePath/{file_title}",
             )
 
-        # Fallback: try osm_wikimedia_commons for thumbnail
-        if commons_ref and entity_attrs.get("thumbnail_url") is None:
-            file_name = commons_ref.replace("Category:", "")
-            if not commons_ref.startswith("Category:"):
+        # Fallback: derive thumbnail from osm_wikimedia_commons File: references
+        if (
+            commons_ref
+            and isinstance(commons_ref, str)
+            and commons_ref.startswith("File:")
+            and entity_attrs.get("thumbnail_url") is None
+        ):
+            file_name = commons_ref[len("File:") :]
+            if file_name:
                 file_title = quote(file_name, safe=":/@!$&'()*+,;=-._~%")
                 self._set_field(
                     updates,
@@ -191,19 +217,22 @@ class EnrichFromWikidata(AdminScript):
         if street and entity_attrs.get("address") is None:
             self._set_field(updates, "address", street)
 
-        # country <- P17 (country QID) -> human name from labels
+        # country <- P17 (country QID) -> ISO2 (resolved from Wikidata label)
         country_qid = self._extract_claim_value(claims, self.P_COUNTRY)
         if country_qid and entity_attrs.get("country") is None:
             if "labels" in wd_entity:
                 for lbl in wd_entity["labels"].values():
                     if "value" in lbl:
-                        self._set_field(updates, "country", lbl["value"])
+                        iso2 = resolve_country(lbl["value"])
+                        if iso2:
+                            self._set_field(updates, "country", iso2)
                         break
 
-        # opening_hours <- P1412
-        oh = self._extract_monolingual_text(claims, self.P_OPENING_HOURS)
-        if oh and entity_attrs.get("opening_hours") is None:
-            self._set_field(updates, "opening_hours", oh)
+        # opening_hours <- P_OPENING_HOURS (skipped: no single Wikidata property)
+        if self.P_OPENING_HOURS:
+            oh = self._extract_monolingual_text(claims, self.P_OPENING_HOURS)
+            if oh and entity_attrs.get("opening_hours") is None:
+                self._set_field(updates, "opening_hours", oh)
 
         # phone <- P426
         phone = self._extract_claim_value(claims, self.P_PHONE)
@@ -217,13 +246,13 @@ class EnrichFromWikidata(AdminScript):
 
         return updates
 
-    def _collect_wiki_keys(self, attrs: dict) -> dict:
+    def _collect_wiki_keys(self, attrs: dict, source: str = "osm") -> dict:
         """Collect all wiki-related keys from entity attributes.
 
         Returns dict:
-          - primary_qid: osm_wikidata value
-          - commons: osm_wikimedia_commons value
-          - wikipedia: osm_wikipedia value (lang:title)
+          - primary_qid: <prefix>_wikidata value
+          - commons: osm_wikimedia_commons value (OSM only)
+          - wikipedia: osm_wikipedia value (OSM only)
           - secondary_qids: {key: qid} for osm_<prefix>:wikidata keys
           - secondary_wikis: {key: lang:title} for osm_<prefix>:wikipedia keys
         """
@@ -234,6 +263,10 @@ class EnrichFromWikidata(AdminScript):
             "secondary_qids": {},
             "secondary_wikis": {},
         }
+
+        if source == "opentripmap":
+            result["primary_qid"] = attrs.get("otm_wikidata")
+            return result
 
         result["primary_qid"] = attrs.get("osm_wikidata")
         result["commons"] = attrs.get("osm_wikimedia_commons")
@@ -252,8 +285,12 @@ class EnrichFromWikidata(AdminScript):
 
     async def _fetch_wikidata_batch(
         self, qids: list[str], client: httpx.AsyncClient, user_agent: str
-    ) -> dict[str, dict]:
-        """Fetch Wikidata entities for a batch of QIDs. Retries on 429."""
+    ) -> dict[str, dict] | None:
+        """Fetch Wikidata entities for a batch of QIDs. Retries on 429.
+
+        Returns None on persistent failure so callers can abort the run instead
+        of misclassifying entities as not-found.
+        """
         ids = "|".join(qids)
         params = {
             "action": "wbgetentities",
@@ -261,14 +298,17 @@ class EnrichFromWikidata(AdminScript):
             "format": "json",
             "props": "claims|descriptions|labels|sitelinks",
             "sitefilter": "enwiki",
+            "redirects": "yes",
         }
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 resp = await client.get(
                     self.WIKIDATA_API, params=params, headers={"User-Agent": user_agent}
                 )
                 if resp.status_code == 429:
-                    wait = (attempt + 1) * 5
+                    retry_after = resp.headers.get("Retry-After")
+                    wait = int(retry_after) if retry_after and retry_after.isdigit() else 10
+                    wait = min(max(wait, 10) * (attempt + 1), 120)
                     logger.warning("Wikidata rate limited, retrying in %ds", wait)
                     await asyncio.sleep(wait)
                     continue
@@ -281,12 +321,58 @@ class EnrichFromWikidata(AdminScript):
                 return entities
             except httpx.HTTPError as e:
                 logger.error("Wikidata batch fetch failed (attempt %d): %s", attempt + 1, e)
-                if attempt < 2:
-                    await asyncio.sleep((attempt + 1) * 3)
+                if attempt < 4:
+                    await asyncio.sleep((attempt + 1) * 5)
                 else:
-                    logger.error("Wikidata batch fetch failed after retries, skipping batch")
-                    return {}
-        return {}
+                    logger.error("Wikidata batch fetch failed after retries, aborting run")
+                    return None
+        return None
+
+    @staticmethod
+    def _clean_wiki_text(raw: str) -> str | None:
+        """Reduce a Wikipedia REST extract to a short clean first passage."""
+        lines = [line.strip() for line in raw.split("\n") if line.strip()]
+        clean_lines = []
+        for line in lines:
+            if line.startswith(("{|", "|", "==", "#", "*", "[[", "__")):
+                break
+            if line.startswith("[") and "]" in line:
+                continue
+            clean_lines.append(line)
+            if len(clean_lines) >= 5:
+                break
+        return " ".join(clean_lines) if clean_lines else None
+
+    @staticmethod
+    def _first_sentence(text: str, limit: int = 300) -> str:
+        cut = text[:limit]
+        end = cut.find(". ")
+        return cut[: end + 1] if end != -1 else cut
+
+    async def _fetch_wikipedia_by_ref(
+        self, ref: str, client: httpx.AsyncClient, user_agent: str
+    ) -> str | None:
+        """Fetch a Wikipedia extract from a raw 'lang:Title' reference (no QID)."""
+        if not ref or ":" not in ref:
+            return None
+        lang, title = ref.split(":", 1)
+        lang = lang.strip().lower()
+        title = title.strip()
+        if not lang or not title:
+            return None
+        url = self.WIKIPEDIA_REST.format(lang=lang, title=title.replace(" ", "_"))
+        try:
+            async with client.stream(
+                "GET",
+                url,
+                headers={"User-Agent": user_agent, "Accept": "application/x.wiki"},
+                timeout=10,
+            ) as resp:
+                if resp.status_code == 200:
+                    return self._clean_wiki_text(await resp.text())
+        except (httpx.HTTPError, TimeoutError):
+            pass
+        return None
 
     async def _fetch_wikipedia_extract(
         self, wd_entity: dict, client: httpx.AsyncClient, user_agent: str
@@ -319,56 +405,52 @@ class EnrichFromWikidata(AdminScript):
                 timeout=10,
             ) as resp:
                 if resp.status_code == 200:
-                    wiki_text = await resp.text()
-                    lines = [line.strip() for line in wiki_text.split("\n") if line.strip()]
-                    clean_lines = []
-                    for line in lines:
-                        if line.startswith(("{|", "|", "==", "#", "*", "[[", "__")):
-                            break
-                        if line.startswith("[") and "]" in line:
-                            continue
-                        clean_lines.append(line)
-                        if len(clean_lines) >= 5:
-                            break
-                    return " ".join(clean_lines) if clean_lines else None
+                    return self._clean_wiki_text(await resp.text())
         except (httpx.HTTPError, TimeoutError):
             pass
         return None
 
     async def run(self, params, db, llm=None, progress_callback=None) -> ScriptResult:
+        source = (params.get("source") or "osm").strip()
         max_entities = int(params.get("max_entities", 10))
         dry_run = params.get("dry_run", True)
         enrich_description = params.get("enrich_description", True)
         api_batch_size = min(int(params.get("batch_size", 50)), 50)
-        user_agent = params.get("user_agent", "DMO-Enricher/1.0")
+        user_agent = params.get("user_agent") or "my3pai-dmo-enricher/1.0 (https://my3p.ai)"
         target_entity_id = params.get("entity_id", "")
         db_batch_size = int(params.get("db_batch_size", 500))
 
         from sqlalchemy import text
 
         # Build base WHERE clauses
-        wiki_conditions = [
-            "(attributes->>'osm_wikidata') IS NOT NULL",
-            "(attributes->>'osm_wikimedia_commons') IS NOT NULL",
-            "(attributes->>'osm_wikipedia') IS NOT NULL",
-        ]
+        if source == "opentripmap":
+            wiki_conditions = ["(attributes->>'otm_wikidata') IS NOT NULL"]
+        else:
+            wiki_conditions = [
+                "(attributes->>'osm_wikidata') IS NOT NULL",
+                "(attributes->>'osm_wikimedia_commons') IS NOT NULL",
+                "(attributes->>'osm_wikipedia') IS NOT NULL",
+            ]
         base_where = [
-            "source = 'osm'",
+            "source = :source",
             "is_active = true",
-            "quality_score >= 15",
             "enriched_at IS NULL",
             f"({' OR '.join(wiki_conditions)})",
         ]
+        if source == "osm":
+            base_where.append("quality_score >= 15")
+        extra_params: dict = {}
         if target_entity_id:
-            base_where.append(f"id = '{target_entity_id}'")
+            base_where.append("id = :target_id")
+            extra_params["target_id"] = target_entity_id
 
         # Get total count for progress tracking
         count_query = text(f"SELECT count(*) FROM entities WHERE {' AND '.join(base_where)}")
-        total_count = (await db.execute(count_query)).scalar()
+        total_count = (await db.execute(count_query, {"source": source, **extra_params})).scalar()
         if total_count == 0:
             return ScriptResult(
                 success=True,
-                message="No OSM entities with wiki keys found",
+                message=f"No {source} entities with wiki keys found",
                 affected_count=0,
             )
 
@@ -396,7 +478,10 @@ class EnrichFromWikidata(AdminScript):
                     f"FROM entities WHERE {' AND '.join(batch_where)} "
                     f"ORDER BY id LIMIT :limit"
                 )
-                result = await db.execute(query, {"last_id": last_id, "limit": limit})
+                result = await db.execute(
+                    query,
+                    {"source": source, "last_id": last_id, "limit": limit, **extra_params},
+                )
                 rows = result.fetchall()
 
                 if not rows:
@@ -404,11 +489,12 @@ class EnrichFromWikidata(AdminScript):
 
                 # Collect QIDs for this batch
                 batch_entities = []
+                direct_entities = []
                 all_qids = set()
                 for row in rows:
                     eid = row[0]
                     attrs = row[1] or {}
-                    wiki_keys = self._collect_wiki_keys(attrs)
+                    wiki_keys = self._collect_wiki_keys(attrs, source)
                     current = {
                         "summary": row[2],
                         "description": row[3],
@@ -427,19 +513,28 @@ class EnrichFromWikidata(AdminScript):
                         all_qids.add(qid)
 
                     batch_entities.append((eid, wiki_keys, current))
+                    if not wiki_keys["primary_qid"] and not wiki_keys["secondary_qids"]:
+                        direct_entities.append((eid, wiki_keys, current))
                     last_id = eid
 
                 # Fetch Wikidata for this batch's QIDs
-                wd_entities = {}
+                wd_entities: dict = {}
+                fetch_failed = False
                 if all_qids:
                     qid_list = list(all_qids)
                     for i in range(0, len(qid_list), api_batch_size):
                         batch_qids = qid_list[i : i + api_batch_size]
-                        wd_entities.update(
-                            await self._fetch_wikidata_batch(batch_qids, client, user_agent)
-                        )
+                        fetched = await self._fetch_wikidata_batch(batch_qids, client, user_agent)
+                        if fetched is None:
+                            fetch_failed = True
+                            break
+                        wd_entities.update(fetched)
                         if i + api_batch_size < len(qid_list):
-                            await asyncio.sleep(0.5)
+                            await asyncio.sleep(1.0)
+
+                if fetch_failed:
+                    logger.error("Aborting enrichment run after Wikidata fetch failure")
+                    break
 
                 # Build QID → entity lookup for this batch
                 qid_to_entities = {}
@@ -472,6 +567,14 @@ class EnrichFromWikidata(AdminScript):
 
                     if not wd_entity:
                         not_found_count += 1
+                        if not dry_run:
+                            await db.execute(
+                                text(
+                                    "UPDATE entities SET enriched_at = NOW()"
+                                    " WHERE id = :id AND enriched_at IS NULL"
+                                ),
+                                {"id": entity_id},
+                            )
                         continue
 
                     # Build update dict from Wikidata
@@ -516,6 +619,52 @@ class EnrichFromWikidata(AdminScript):
                             )
                             await db.execute(mark_sql, {"id": entity_id})
 
+                # Process entities without a Wikidata QID via direct Wikipedia/Commons refs
+                for entity_id, wiki_keys, current in direct_entities:
+                    processed += 1
+                    updates = self._build_update_dict(current, {}, None, wiki_keys["commons"])
+
+                    if (
+                        enrich_description
+                        and wiki_keys["wikipedia"]
+                        and current.get("description") is None
+                    ):
+                        extract = await self._fetch_wikipedia_by_ref(
+                            wiki_keys["wikipedia"], client, user_agent
+                        )
+                        if extract:
+                            self._set_field(updates, "description", extract)
+                            if current.get("summary") is None:
+                                self._set_field(updates, "summary", self._first_sentence(extract))
+                        await asyncio.sleep(0.3)
+
+                    if updates:
+                        enriched_count += 1
+                        if not dry_run:
+                            set_clauses = []
+                            values = {"id": entity_id}
+                            for col, val in updates.items():
+                                set_clauses.append(f"{col} = :{col}")
+                                values[col] = val
+                            set_clauses.append("updated_at = NOW()")
+                            set_clauses.append("enriched_at = NOW()")
+                            await db.execute(
+                                text(
+                                    f"UPDATE entities SET {', '.join(set_clauses)} WHERE id = :id"
+                                ),
+                                values,
+                            )
+                    else:
+                        skipped_count += 1
+                        if not dry_run:
+                            await db.execute(
+                                text(
+                                    "UPDATE entities SET enriched_at = NOW()"
+                                    " WHERE id = :id AND enriched_at IS NULL"
+                                ),
+                                {"id": entity_id},
+                            )
+
                 # Commit batch
                 if not dry_run:
                     await db.commit()
@@ -536,7 +685,7 @@ class EnrichFromWikidata(AdminScript):
         return ScriptResult(
             success=True,
             message=(
-                f"{action} {enriched_count}/{processed} OSM entities "
+                f"{action} {enriched_count}/{processed} {source} entities "
                 f"(skipped: {skipped_count}, not_found: {not_found_count})"
             ),
             affected_count=enriched_count,
