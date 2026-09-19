@@ -19,6 +19,7 @@ Status: production at `fw.my3p.ai` (16 CPU / 8 GB RAM) / 1.35M entities, PostGIS
 * [Project structure](#project-structure)
 * [Deployment](#deployment)
 * [Notes](#notes)
+* [Engineering log](#engineering-log)
 * [License](#license)
 
 ## Why this exists
@@ -280,6 +281,10 @@ Admin scripts are auto-discovered via `pkgutil` in `admin_scripts/registry.py`. 
 ```
 
 Each environment has its own compose file (`docker-compose.{test,staging,prod}.yml`) deployed as `docker-compose.yml` on the target. The Dockerfile is multi-stage with `uv` and runs Alembic before starting Uvicorn with 8 workers. Backups: `scripts/db-backup.sh` and `scripts/db-restore.sh` support `--test`, `--remote` (staging) and `--prod`.
+
+## Engineering log
+
+**September 2026 — data quality, enrichment and search relevance.** Over this cycle the store was brought to production-grade quality across all active sources: every one of the ~1.95M active entities is now mapped into the unified category taxonomy, country values were normalized to ISO 3166-1 alpha-2, and missing addresses, summaries, thumbnails and source links were backfilled for hundreds of thousands of records. More than 600k entities were enriched from Wikidata and Wikipedia, adding descriptions, official websites and imagery where the source data was thin; a source-agnostic quality score (0–100) was computed for the entire corpus to power ranking and data-quality triage; and 1.4M kind-based classifications were generated for records that previously had none. Search was upgraded from alphabetical name matching to relevance-plus-prominence ranking, with an optional soft location bias and a "search this area" radius tier. All work shipped as versioned migrations and idempotent, dry-run-first admin scripts with regression tests, alongside full database backups before every destructive step.
 
 ## Notes
 
