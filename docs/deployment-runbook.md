@@ -28,8 +28,11 @@ The repository is public — never put hosts, ports, keys, or passwords in files
 | `DEPLOY_USER` | SSH user |
 | `DEPLOY_SSH_KEY` | SSH private key allowed to log in to the VM |
 
-Runtime secrets (DB/Redis passwords, API key, admin credentials) stay only in
-`/root/ups/.env` on the VM (mode `600`), which the deploy never overwrites.
+Runtime secrets (DB/Redis passwords, API key, admin credentials) and
+runtime-only feature flags (e.g. `MCP_ENABLED`, `MCP_ALLOWED_HOSTS`) stay only
+in `/root/ups/.env` on the VM (mode `600`), which the deploy never overwrites.
+Do not move these into `docker-compose.prod.yml` or the workflows: the compose
+file is replaced from the repo on every deploy, the `.env` is not.
 
 GHCR images are pulled anonymously (package visibility: public — the image
 contains source code only, no secrets). To switch to a private package, add
