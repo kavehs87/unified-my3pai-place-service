@@ -14,6 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required (e.g. sha-abc1234)}"
+export IMAGE_TAG
 COMPOSE="docker compose -f docker-compose.yml"
 HEALTH_URL="http://localhost:8000/health"
 BACKUP_DIR="pre_deploy_backups"
@@ -39,7 +40,7 @@ if $COMPOSE exec -T db pg_dump -Fc -U "${POSTGRES_USER:-postgres}" -d "${POSTGRE
 else
   info "WARNING: pre-deploy backup skipped (db unavailable)"
 fi
-ls -1t "$BACKUP_DIR"/pre_*.dump 2>/dev/null | tail -n +$((BACKUP_RETENTION + 1)) | xargs -r rm -f
+ls -1t "$BACKUP_DIR"/pre_*.dump 2>/dev/null | tail -n +$((BACKUP_RETENTION + 1)) | xargs -r rm -f || true
 
 # ── Registry login (only needed while the GHCR package is private) ───────────
 if [[ -n "${GHCR_TOKEN:-}" && -n "${GHCR_USER:-}" ]]; then
