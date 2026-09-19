@@ -201,7 +201,21 @@ pie showData
 * Warning: 50 to 130 VUs, P95 50 to 500 ms, DB pool 16 to 27 of 30
 * Limit: over 130 VUs errors rise, spatial is first to degrade, writes stay at about 1 batch per second per source (advisory lock) and about 8 per second across sources
 
-Reproduce: `loadtest/run_all.sh` and `k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000`. Full logs in `loadtest/` and `results/`. Regenerate API docs with `uv run python scripts/export-openapi.py`.
+### MCP endpoint (`POST /mcp`)
+
+Read-only `tools/call` mix (search 60 percent, nearby 20 percent, map 10 percent, detail 10 percent) against the local dev dataset (1.95M entities), 4 Uvicorn workers, `k6` running on the same 10-core host (conservative). Rate limiting disabled to measure raw capacity:
+
+| VUs | Throughput | P50 | P95 | P99 | Errors |
+|---|---|---|---|---|---|
+| 100 | 512 req/s | 110 ms | 275 ms | 349 ms | 0 |
+| 200 | 975 req/s | 123 ms | 253 ms | 323 ms | 0 |
+| 400 | 982 req/s | 298 ms | 691 ms | 976 ms | 0 |
+| 600 | 927 req/s | 515 ms | 1.2 s | 1.7 s | 0 |
+
+* Throughput plateaus at about 980 req/s (4 workers); beyond that only latency grows — zero failures at every level (server logs: 0 tool failures, 0 query timeouts).
+* With the default rate limit (1000 req/min/IP), a single IP is capped at about 16.7 req/s: 94,164 of 96,170 requests in the ramp returned 429, i.e. the endpoint maxes out at the project base cap by design.
+
+Reproduce: `loadtest/run_all.sh` and `k6 run loadtest/search.js --env BASE_URL=http://10.0.2.10:8000`; MCP: `k6 run loadtest/mcp.js -e BASE_URL=http://127.0.0.1:8010` (`-e STAGES='[...]'` to override the VU ramp). Full logs in `loadtest/` and `results/`. Regenerate API docs with `uv run python scripts/export-openapi.py`.
 
 <p align="right"><a href="#contents">Back to top</a></p>
 
