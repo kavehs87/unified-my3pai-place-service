@@ -11,7 +11,12 @@ set -euo pipefail
 # failure. The runtime .env stays on the host and is never touched.
 # =============================================================================
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${SCRIPT_DIR}/docker-compose.yml" ]]; then
+  cd "${SCRIPT_DIR}"
+else
+  cd "${SCRIPT_DIR}/.."
+fi
 
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required (e.g. sha-abc1234)}"
 export IMAGE_TAG
